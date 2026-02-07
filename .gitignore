@@ -1,0 +1,15 @@
+# editor
+*~
+.*~
+*.sw[op]
+\#*#
+
+# Python caches
+__pycache__/
+*.py[oc]
+
+# Create by colcon
+/build/
+/install/
+/log/
+
