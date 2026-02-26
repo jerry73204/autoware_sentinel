@@ -1,0 +1,28 @@
+# justfile for autoware_shift_decider
+
+# Default recipe - show available commands
+default:
+    @just --list
+
+# Generate bindings from package.xml dependencies
+generate:
+    cargo nano-ros generate --force
+
+# Build the crate
+build:
+    cargo build
+
+# Run tests
+test:
+    cargo test
+
+# Generate bindings and build
+all: generate build
+
+# Clean generated bindings and build artifacts
+clean:
+    rm -rf generated .cargo/config.toml target
+
+# Clean only generated bindings (keep build cache)
+clean-bindings:
+    rm -rf generated .cargo/config.toml
