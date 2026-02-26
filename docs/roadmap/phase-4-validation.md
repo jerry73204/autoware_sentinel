@@ -1,6 +1,6 @@
 # Phase 4: Validation Layer
 
-**Timeline:** Weeks 8–9
+**Status:** Not Started
 **Depends on:** Phase 1 (messages), Phase 2 (MRM chain)
 **Goal:** Add independent validation on the safety island to detect when the main stack's
 controller is sending dangerous commands, and provide acceleration estimation for MRM
@@ -20,6 +20,9 @@ island's validator can still trigger MRM.
 ## Work Items
 
 ### 4.1 — Port `autoware_control_validator`
+
+- [ ] Algorithm library
+- [ ] Unit tests
 
 **Source:** `autoware-repo/src/universe/autoware_universe/control/autoware_control_validator/`
 **Target:** `src/autoware_control_validator/`
@@ -53,6 +56,9 @@ island.
 
 ### 4.2 — Port `autoware_operation_mode_transition_manager`
 
+- [ ] Algorithm library
+- [ ] Unit tests
+
 **Source:** `autoware-repo/src/universe/autoware_universe/system/autoware_operation_mode_transition_manager/`
 **Target:** `src/autoware_operation_mode_transition_manager/`
 
@@ -72,6 +78,9 @@ Transition guards:
 - No active MRM.
 
 ### 4.3 — Port `autoware_twist2accel`
+
+- [ ] Algorithm library
+- [ ] Unit tests
 
 **Source:** `autoware-repo/src/core/autoware_core/localization/autoware_twist2accel/`
 **Target:** `src/autoware_twist2accel/`

@@ -1,6 +1,6 @@
 # Phase 3: Safety Gate
 
-**Timeline:** Weeks 5–7
+**Status:** Not Started
 **Depends on:** Phase 1 (messages), Phase 2 (MRM chain for emergency source)
 **Goal:** Port the vehicle command gate to the safety island so that every command reaching
 the vehicle actuators passes through an independent rate limiter and source arbiter.
@@ -20,9 +20,37 @@ three incremental milestones.
 After this phase, no software failure on the main computer can send unchecked commands to
 the vehicle hardware.
 
+## Architecture
+
+Same two-layer pattern as Phase 2:
+
+1. **Algorithm library** — Pure `#![no_std]` rate-limiting, clamping, and source arbitration
+   logic. Operates on message types, no ROS dependencies. The gate's core is a struct that
+   accepts control commands and current vehicle state, returns filtered commands.
+2. **Node wiring** — Uses nros `Executor` with multiple subscription callbacks feeding the
+   gate algorithm. The gate has 10+ topics, so the `Executor` needs sufficient callback
+   capacity (e.g., `Executor::<_, 16, 16384>`).
+
+```rust
+// Example wiring sketch
+executor.add_subscription::<Control, _>("input/auto/control_cmd", |msg| {
+    gate.set_autonomous_cmd(msg);
+})?;
+executor.add_subscription::<Control, _>("input/emergency/control_cmd", |msg| {
+    gate.set_emergency_cmd(msg);
+})?;
+executor.add_timer(33, move || {
+    let filtered = gate.filter();
+    control_pub.publish(&filtered).ok();
+})?;
+```
+
 ## Work Items
 
 ### 3.1 — Core rate limiting and command clamping
+
+- [ ] Algorithm library
+- [ ] Unit tests
 
 **Source:** `autoware-repo/src/universe/autoware_universe/control/autoware_vehicle_cmd_gate/`
 **Target:** `src/autoware_vehicle_cmd_gate/`
@@ -55,6 +83,9 @@ Core interfaces for this milestone:
 
 ### 3.2 — Source arbitration
 
+- [ ] Algorithm library
+- [ ] Unit tests
+
 Add support for multiple command sources with priority-based selection:
 1. **Emergency** (highest) — from MRM operators on the island
 2. **Remote** — from remote operator console
@@ -72,6 +103,9 @@ Add support for multiple command sources with priority-based selection:
 | `output/hazard_lights_cmd` | Pub | `autoware_vehicle_msgs/HazardLightsCommand` |
 
 ### 3.3 — Heartbeat monitoring and diagnostics
+
+- [ ] Algorithm library
+- [ ] Unit tests
 
 Add heartbeat monitoring for each command source. If the autonomous source stops sending
 commands for a configurable timeout, the gate publishes a diagnostic error and the MRM

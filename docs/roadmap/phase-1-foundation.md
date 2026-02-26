@@ -1,92 +1,176 @@
 # Phase 1: Foundation
 
-**Timeline:** Weeks 1–2
+**Status:** Complete
 **Goal:** Generate Autoware message types for nano-ros and port three trivial packages to
-validate the end-to-end pipeline (message codegen → Rust crate → pub/sub wiring).
+validate the end-to-end pipeline (message codegen → Rust crate → pure algorithm library).
 
 ## Description
 
-Every Tier 1 porting candidate depends on Autoware-specific message types that do not yet
-exist as nano-ros crates. This phase unblocks all subsequent work by generating those crates
-via `cargo nano-ros generate`, then ports three small, stateless packages to prove the
+Every porting candidate depends on Autoware-specific message types that do not yet exist as
+nano-ros crates. This phase unblocks all subsequent work by generating those crates via
+`cargo nano-ros generate-rust`, then ports three small, stateless packages to prove the
 pipeline works and to establish project conventions (directory layout, Cargo workspace
-structure, CI, testing against a ROS 2 peer).
+structure, testing).
 
 The three packages were chosen because they are tiny (50–163 LOC of core logic), have zero
-external dependencies, use only pub/sub + timer patterns, and each exercises a distinct
-concern: threshold filtering, format conversion, and state machine.
+external dependencies beyond message types, and each exercises a distinct concern: threshold
+filtering, format conversion, and state machine.
+
+**Architecture note:** Ported packages in this phase are pure algorithm libraries (`lib.rs`
+only, no `main.rs`). They expose structs and methods that operate on message types but do
+not create nodes, publishers, or subscribers. ROS wiring (Executor, Node, pub/sub callbacks)
+is deferred to integration / binary crates in later phases.
 
 ## Work Items
 
 ### 1.1 — Generate Autoware message crates
 
-Create `src/messages/` workspace with generated crates for:
+- [x] Generate `src/messages/` crates via `cargo nano-ros generate-rust`
 
-| ROS 2 Package | Key Types |
-|----------------|-----------|
-| `autoware_control_msgs` | `Control`, `Lateral`, `Longitudinal` |
-| `tier4_system_msgs` | `OperateMrm` (srv), `MrmBehaviorStatus`, `OperationModeAvailability` |
-| `autoware_vehicle_msgs` | `VelocityReport`, `GearCommand`, `ControlModeReport`, `HazardLightsCommand`, `TurnIndicatorsCommand`, `SteeringReport` |
-| `autoware_adapi_v1_msgs` | `MrmState`, `OperationModeState`, `Heartbeat` |
-| `nav_msgs` | `Odometry` |
-| `geometry_msgs` | `TwistWithCovarianceStamped`, `TwistWithCovariance`, `Twist`, `Vector3` |
-| `autoware_common_msgs` | `ResponseStatus` (dependency of `OperateMrm`) |
+9 message crates generated (7 planned + `diagnostic_msgs` + `autoware_common_msgs`):
 
-Transitive dependencies (`builtin_interfaces`, `std_msgs`) will be pulled in automatically.
+| ROS 2 Package            | Key Types                                                                                                              |
+|--------------------------|------------------------------------------------------------------------------------------------------------------------|
+| `autoware_control_msgs`  | `Control`, `Lateral`, `Longitudinal`                                                                                   |
+| `autoware_system_msgs`   | `AutowareState`, `OperationModeAvailability`                                                                           |
+| `autoware_vehicle_msgs`  | `VelocityReport`, `GearCommand`, `GearReport`, `ControlModeReport`, `HazardLightsCommand`, `TurnIndicatorsCommand`, `SteeringReport` |
+| `autoware_adapi_v1_msgs` | `MrmState`, `OperationModeState`, `Heartbeat`                                                                          |
+| `nav_msgs`               | `Odometry`                                                                                                             |
+| `geometry_msgs`          | `TwistWithCovarianceStamped`, `TwistWithCovariance`, `Twist`, `Vector3`, `AccelWithCovarianceStamped`                  |
+| `autoware_common_msgs`   | `ResponseStatus`                                                                                                       |
+| `diagnostic_msgs`        | `DiagnosticStatus`, `DiagnosticArray`, `KeyValue`                                                                      |
+| `builtin_interfaces`     | `Time`, `Duration` (transitive)                                                                                        |
+| `std_msgs`               | `Header`, etc. (transitive)                                                                                            |
 
 ### 1.2 — Port `autoware_stop_filter`
 
+- [x] Pure algorithm library in `src/autoware_stop_filter/`
+
 **Source:** `autoware-repo/src/core/autoware_core/localization/autoware_stop_filter/`
-**Target:** `src/autoware_stop_filter/`
 
 Dual-threshold velocity filter. Determines whether the vehicle is stopped and zeros all
 twist components when it is.
 
-| Interface | Direction | Type |
-|-----------|-----------|------|
-| `/input/odom` | Sub | `nav_msgs/Odometry` |
-| `/output/odom` | Pub | `nav_msgs/Odometry` |
-
-Core algorithm:
-```
-is_stopped = |vx| < vx_thresh AND |wz| < wz_thresh
-if is_stopped: zero all twist components
-```
+| Interface      | Direction | Type                |
+|----------------|-----------|---------------------|
+| `/input/odom`  | Sub       | `nav_msgs/Odometry` |
+| `/output/odom` | Pub       | `nav_msgs/Odometry` |
 
 ### 1.3 — Port `autoware_vehicle_velocity_converter`
 
+- [x] Pure algorithm library in `src/autoware_vehicle_velocity_converter/`
+
 **Source:** `autoware-repo/src/core/autoware_core/sensing/autoware_vehicle_velocity_converter/`
-**Target:** `src/autoware_vehicle_velocity_converter/`
 
 Stateless format translation from vehicle CAN velocity report to standard twist message
 with covariance matrix assignment.
 
-| Interface | Direction | Type |
-|-----------|-----------|------|
-| `/vehicle/status/velocity_status` | Sub | `autoware_vehicle_msgs/VelocityReport` |
-| `/vehicle/status/twist_with_covariance` | Pub | `geometry_msgs/TwistWithCovarianceStamped` |
+| Interface                               | Direction | Type                                       |
+|-----------------------------------------|-----------|--------------------------------------------|
+| `/vehicle/status/velocity_status`       | Sub       | `autoware_vehicle_msgs/VelocityReport`     |
+| `/vehicle/status/twist_with_covariance` | Pub       | `geometry_msgs/TwistWithCovarianceStamped` |
 
 ### 1.4 — Port `autoware_shift_decider`
 
+- [x] Pure algorithm library in `src/autoware_shift_decider/`
+
 **Source:** `autoware-repo/src/universe/autoware_universe/control/autoware_shift_decider/`
-**Target:** `src/autoware_shift_decider/`
 
 State machine that decides gear (DRIVE/REVERSE/PARK/NEUTRAL) based on the velocity sign in
 the current control command. Prevents gear-hunting.
 
-| Interface | Direction | Type |
-|-----------|-----------|------|
-| `/control/command/control_cmd` | Sub | `autoware_control_msgs/Control` |
-| `/control/command/gear_cmd` | Pub | `autoware_vehicle_msgs/GearCommand` |
+| Interface                      | Direction | Type                                |
+|--------------------------------|-----------|-------------------------------------|
+| `/control/command/control_cmd` | Sub       | `autoware_control_msgs/Control`     |
+| `/control/command/gear_cmd`    | Pub       | `autoware_vehicle_msgs/GearCommand` |
 
 ## Acceptance Criteria
 
-- [ ] All message crates compile with `no_std` (no heap allocation in message structs).
-- [ ] Message crates pass CDR round-trip tests: serialize → deserialize → field equality.
-- [ ] Each ported package compiles as a standalone `no_std` crate with the generated messages.
-- [ ] Each ported package has unit tests covering the core algorithm (stop detection
+- [x] All message crates compile with `no_std` (no heap allocation in message structs).
+- [x] Message crates pass CDR round-trip tests: serialize → deserialize → field equality.
+- [x] Each ported package compiles as a standalone `no_std` crate with the generated messages.
+- [x] Each ported package has unit tests covering the core algorithm (stop detection
       thresholds, covariance assignment, gear transitions).
-- [ ] At least one package is integration-tested against a ROS 2 peer node via zenoh
-      (publish from nano-ros, subscribe on ROS 2 side, verify message contents).
-- [ ] Cargo workspace at project root includes all crates.
-- [ ] CI runs `cargo build --target thumbv7em-none-eabihf` and `cargo test` (native).
+- [x] Cargo workspace at project root includes all crates.
+- [x] Cross-compile: `cargo build --target thumbv7em-none-eabihf`.
+
+## Lessons Learned
+
+- **`[f64; 36]` Default**: `Default` is not implemented for `[T; N]` where N > 32. Types
+  like `PoseWithCovariance` need manual `Default` impls with `[0.0; 36]`. Fixed in
+  `geometry_msgs` for `PoseWithCovariance`, `TwistWithCovariance`, `AccelWithCovariance`.
+- **f32→f64 precision**: `VelocityReport` fields are `f32`. When comparing f64 output in
+  tests, compare against `value_f32 as f64`, not `value_f64`.
+- **Generated crate edition**: Generated message crates use edition 2021; workspace
+  packages use edition 2024.
+- **Constants in generated msgs**: Constants defined in `.msg` files are private in generated
+  modules (not re-exported from `mod.rs`). Define your own constants in application crates.
+
+## Verification
+
+Formal verification work items for Phase 1 crates. Kani (bounded model checking) is used for
+per-call correctness, panic-freedom, and IEEE 754 edge-case analysis. See
+[Phase 5](phase-5-verification.md) for the full verification strategy.
+
+### Build setup
+
+Each algorithm crate's `Cargo.toml` needs a lint declaration so that `cargo check` does not
+warn about the `cfg(kani)` attribute injected by `cargo kani`:
+
+```toml
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+```
+
+Harnesses go inline in each crate in a `#[cfg(kani)] mod verification { ... }` block.
+
+### NaN safety gap
+
+**Finding:** `StopFilter::is_stopped` (line 53) uses `linear.x.abs() < threshold`. Per IEEE
+754, `NaN.abs() < threshold` evaluates to `false`, so NaN velocity is treated as "moving" and
+passes through unfiltered. In a safety-critical system, corrupted sensor data should trigger
+the fail-safe state (stopped = zero output).
+
+**Proposed fix:** Invert the comparison logic:
+
+```rust
+// Before (NaN → not stopped → passthrough)
+linear.x.abs() < self.vx_threshold && angular.z.abs() < self.wz_threshold
+
+// After (NaN → stopped → zero output, fail-safe)
+!(linear.x.abs() >= self.vx_threshold || angular.z.abs() >= self.wz_threshold)
+```
+
+With `>=`, NaN comparisons return `false`, the OR is `false`, the negation is `true`, so
+NaN maps to `is_stopped = true` (fail-safe). The `output_never_nan` Kani harness verifies
+this fix.
+
+### StopFilter harnesses (5)
+
+| Harness | Property | Expected |
+|---------|----------|----------|
+| `nan_velocity_is_not_stopped` | NaN input causes passthrough (proves the bug exists) | Pass (before fix) |
+| `output_never_nan` | All 6 output twist components are never NaN | Fail → Pass after fix |
+| `apply_never_panics` | No panics for any input (NaN, Inf, subnormals) | Pass |
+| `stopped_means_all_zeros` | `was_stopped == true` implies all components exactly `0.0` | Pass |
+| `moving_means_exact_passthrough` | `!was_stopped` implies bit-identical output (`to_bits()`) | Pass |
+
+After the NaN fix, add `threshold_symmetry`: for finite inputs,
+`is_stopped(vx, wz) == is_stopped(-vx, -wz)`.
+
+### VehicleVelocityConverter harnesses (4)
+
+| Harness | Property | Expected |
+|---------|----------|----------|
+| `covariance_valid_diagonal` | Diagonal elements ≥ 0, off-diagonal exactly 0 | Pass |
+| `f32_cast_preserves_sign` | Sign of f64 output matches sign of f32 input | Pass |
+| `convert_never_panics` | No panics for any input (NaN, Inf, subnormals) | Pass |
+| `convert_output_nan_check` | NaN f32 input does not produce NaN f64 output | Fail (same class as StopFilter) |
+
+### ShiftDecider harnesses (3)
+
+| Harness | Property | Expected |
+|---------|----------|----------|
+| `output_is_valid_gear` | Output is DRIVE (2), REVERSE (20), PARK (22), or passthrough | Pass |
+| `dead_zone_holds_previous` | Dead-zone velocity preserves previous gear command | Pass |
+| `nan_velocity_holds_previous` | NaN velocity preserves previous gear (safe by accident) | Pass |
