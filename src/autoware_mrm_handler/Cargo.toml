@@ -11,6 +11,12 @@ autoware_vehicle_msgs = { version = "*", default-features = false }
 tier4_system_msgs = { version = "*", default-features = false }
 nav_msgs = { version = "*", default-features = false }
 
+# Workaround: LLVM SIGSEGV in ARM register scavenger when compiling
+# autoware_adapi_v1_msgs at opt-level=0 for thumbv7em-none-eabihf.
+# See: https://github.com/llvm/llvm-project/issues/64277
+[profile.dev.package.autoware_adapi_v1_msgs]
+opt-level = 1
+
 [features]
 default = []
 std = [

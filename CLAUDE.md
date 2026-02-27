@@ -186,9 +186,10 @@ application code. Always use the `Executor`/`Node` layer.
 - **Generated crate edition**: Message crates use edition 2021; algorithm crates use 2024.
 - **Constants in generated msgs**: Constants defined in `.msg` files are private in generated
   modules — define your own constants in application crates.
-- **LLVM SIGSEGV on cross-compile**: `autoware_adapi_v1_msgs` triggers an LLVM crash when
-  building (codegen) in debug mode for `thumbv7em-none-eabihf`. Use `cargo check` (no codegen)
-  for cross-compile verification, or `cargo build --release` for actual binaries.
+- **LLVM SIGSEGV on cross-compile**: `autoware_adapi_v1_msgs` triggers an LLVM crash in the
+  ARM register scavenger (`scavengeFrameVirtualRegs`) when building at `opt-level=0` for
+  `thumbv7em-none-eabihf`. Workaround: add `[profile.dev.package.autoware_adapi_v1_msgs]
+  opt-level = 1` in any crate that depends on it. See [LLVM #64277](https://github.com/llvm/llvm-project/issues/64277).
 
 ## Autoware Source Reference
 
