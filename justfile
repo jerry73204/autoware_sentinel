@@ -1,6 +1,6 @@
 # justfile for autoware-nano-ros
 
-packages := "autoware_stop_filter autoware_vehicle_velocity_converter autoware_shift_decider"
+packages := "autoware_stop_filter autoware_vehicle_velocity_converter autoware_shift_decider autoware_mrm_emergency_stop_operator autoware_mrm_comfortable_stop_operator autoware_heartbeat_watchdog autoware_mrm_handler"
 
 # Default recipe - show available commands
 default:
@@ -34,7 +34,7 @@ format-check:
 
 # Cross-compile check all packages
 cross-check:
-    for pkg in {{ packages }}; do echo "=== $pkg ===" && (cd "src/$pkg" && cargo build --target thumbv7em-none-eabihf); done
+    for pkg in {{ packages }}; do echo "=== $pkg ===" && (cd "src/$pkg" && cargo check --target thumbv7em-none-eabihf); done
 
 # CI: format-check, cross-check, and test
 ci: format-check cross-check test

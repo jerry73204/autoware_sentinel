@@ -1,0 +1,21 @@
+[package]
+name = "autoware_mrm_handler"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+autoware_adapi_v1_msgs = { version = "*", default-features = false }
+autoware_vehicle_msgs = { version = "*", default-features = false }
+tier4_system_msgs = { version = "*", default-features = false }
+nav_msgs = { version = "*", default-features = false }
+
+[features]
+default = []
+std = [
+    "autoware_adapi_v1_msgs/std",
+    "autoware_vehicle_msgs/std",
+    "tier4_system_msgs/std",
+    "nav_msgs/std",
+]

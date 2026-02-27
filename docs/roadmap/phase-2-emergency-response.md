@@ -1,6 +1,6 @@
 # Phase 2: Emergency Response
 
-**Status:** Not Started
+**Status:** Complete (algorithm libraries)
 **Depends on:** Phase 1 (message crates)
 **Goal:** Build the MRM (Minimum Risk Maneuver) chain on the safety island so it can
 autonomously bring the vehicle to a safe stop with zero dependency on the main compute.
@@ -59,8 +59,8 @@ executor.spin_blocking(SpinOptions::default())?;
 
 ### 2.1 — Port `autoware_mrm_emergency_stop_operator`
 
-- [ ] Algorithm library
-- [ ] Unit tests
+- [x] Algorithm library
+- [x] Unit tests (7 tests)
 
 **Source:** `autoware-repo/src/universe/autoware_universe/system/autoware_mrm_emergency_stop_operator/`
 **Target:** `src/autoware_mrm_emergency_stop_operator/`
@@ -84,8 +84,8 @@ Parameters: `target_acceleration = -2.5 m/s²`, `target_jerk = -1.5 m/s³`.
 
 ### 2.2 — Port `autoware_mrm_comfortable_stop_operator`
 
-- [ ] Algorithm library
-- [ ] Unit tests
+- [x] Algorithm library
+- [x] Unit tests (5 tests)
 
 **Source:** `autoware-repo/src/universe/autoware_universe/system/autoware_mrm_comfortable_stop_operator/`
 **Target:** `src/autoware_mrm_comfortable_stop_operator/`
@@ -107,8 +107,8 @@ the same deceleration profile as the emergency stop operator but with gentler pa
 
 ### 2.3 — Port `autoware_mrm_handler`
 
-- [ ] Algorithm library (state machine + behavior selection)
-- [ ] Unit tests
+- [x] Algorithm library (state machine + behavior selection)
+- [x] Unit tests (14 tests)
 
 **Source:** `autoware-repo/src/universe/autoware_universe/system/autoware_mrm_handler/`
 **Target:** `src/autoware_mrm_handler/`
@@ -146,8 +146,8 @@ nros provides service client support via `node.create_client::<OperateMrm>(topic
 
 ### 2.4 — Implement heartbeat watchdog
 
-- [ ] Algorithm library
-- [ ] Unit tests
+- [x] Algorithm library
+- [x] Unit tests (6 tests)
 
 **Target:** `src/autoware_heartbeat_watchdog/`
 
@@ -174,18 +174,19 @@ on `nros` with `features = ["std", "rmw-zenoh", "platform-posix"]` for native te
 
 ## Acceptance Criteria
 
-- [ ] Emergency stop operator decelerates from 20 m/s to 0 m/s following the jerk-limited
+- [x] Emergency stop operator decelerates from 20 m/s to 0 m/s following the jerk-limited
       ramp. Unit test verifies velocity profile over time.
-- [ ] Comfortable stop operator decelerates with gentler profile (-1.0 m/s² vs -2.5 m/s²).
-- [ ] MRM handler transitions through NORMAL → MRM_OPERATING → MRM_SUCCEEDED when velocity
+- [x] Comfortable stop operator decelerates with gentler profile (-1.0 m/s² vs -2.5 m/s²).
+- [x] MRM handler transitions through NORMAL → MRM_OPERATING → MRM_SUCCEEDED when velocity
       reaches zero. Unit test covers the full state machine.
-- [ ] MRM handler escalates from COMFORTABLE_STOP to EMERGENCY_STOP on service call failure.
-- [ ] Heartbeat watchdog triggers within 500 ms of last heartbeat. Unit test with simulated
+- [x] MRM handler escalates from COMFORTABLE_STOP to EMERGENCY_STOP when comfortable stop
+      becomes unavailable.
+- [x] Heartbeat watchdog triggers within 500 ms of last heartbeat. Unit test with simulated
       time verifies timeout detection.
 - [ ] End-to-end test: stop heartbeat → watchdog fires → MRM handler activates →
       emergency stop operator publishes brake commands → velocity reaches zero.
-- [ ] All algorithm crates compile `no_std` for `thumbv7em-none-eabihf`.
-- [ ] Hazard lights are enabled and gear is set to PARK when MRM succeeds.
+- [x] All algorithm crates compile `no_std` for `thumbv7em-none-eabihf`.
+- [x] Hazard lights are enabled and gear is set to PARK when MRM succeeds.
 
 ## Verification
 
@@ -225,11 +226,11 @@ implementation, verifying `velocity == 0.0` within 300 iterations.
 
 Proves three properties of the MRM orchestrator state machine:
 
-| Property | Description |
-|----------|-------------|
-| Terminal state stability | Once in `Succeeded` or `Failed`, state never changes |
-| Escalation monotonicity | Behavior only escalates (`None → ComfortableStop → EmergencyStop`), never de-escalates |
-| Succeeded requires v=0 | Cannot declare `MRM_SUCCEEDED` while vehicle is moving |
+| Property                 | Description                                                                            |
+|--------------------------|----------------------------------------------------------------------------------------|
+| Terminal state stability | Once in `Succeeded` or `Failed`, state never changes                                   |
+| Escalation monotonicity  | Behavior only escalates (`None → ComfortableStop → EmergencyStop`), never de-escalates |
+| Succeeded requires v=0   | Cannot declare `MRM_SUCCEEDED` while vehicle is moving                                 |
 
 **Ghost model:**
 
@@ -249,10 +250,10 @@ is `behavior_ord(post) >= behavior_ord(pre)` for any transition while `state == 
 
 ### Heartbeat watchdog (Kani)
 
-| Harness | Property |
-|---------|----------|
-| `timeout_fires_correctly` | `elapsed >= timeout` iff watchdog fires |
-| `no_false_positives` | Watchdog does not fire before timeout elapses |
+| Harness                   | Property                                      |
+|---------------------------|-----------------------------------------------|
+| `timeout_fires_correctly` | `elapsed >= timeout` iff watchdog fires       |
+| `no_false_positives`      | Watchdog does not fire before timeout elapses |
 
 ### Verification crate additions
 

@@ -1,0 +1,21 @@
+# justfile for autoware_mrm_emergency_stop_operator
+
+default:
+    @just --list
+
+generate:
+    cargo nano-ros generate --force
+
+build:
+    cargo build
+
+test:
+    cargo test
+
+all: generate build
+
+clean:
+    rm -rf generated .cargo/config.toml target
+
+clean-bindings:
+    rm -rf generated .cargo/config.toml

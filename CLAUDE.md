@@ -21,7 +21,11 @@ autoware-nano-ros/
 │   │   ├── generated/               # per-package generated message crates
 │   │   └── src/lib.rs
 │   ├── autoware_vehicle_velocity_converter/  # Phase 1 — VelocityReport→Twist
-│   └── autoware_shift_decider/      # Phase 1 — gear state machine
+│   ├── autoware_shift_decider/      # Phase 1 — gear state machine
+│   ├── autoware_mrm_emergency_stop_operator/  # Phase 2 — jerk-limited hard braking
+│   ├── autoware_mrm_comfortable_stop_operator/ # Phase 2 — gentle deceleration
+│   ├── autoware_heartbeat_watchdog/ # Phase 2 — main compute heartbeat monitor
+│   └── autoware_mrm_handler/        # Phase 2 — MRM orchestrator state machine
 ├── docs/roadmap/                    # Phase docs (1–4)
 ├── justfile                         # Root convenience recipes
 ├── autoware-repo -> ~/repos/autoware/1.5.0-ws  # Autoware source (symlink)
@@ -44,7 +48,7 @@ Root justfile for convenience:
 ```bash
 just build             # build all packages
 just test              # test all packages
-just cross-check       # cargo build --target thumbv7em-none-eabihf in each
+just cross-check       # cargo check --target thumbv7em-none-eabihf in each
 just generate-bindings # regenerate messages in all packages
 just format            # cargo fmt on all packages
 just ci                # format-check + cross-check + test
@@ -86,7 +90,7 @@ Generated `geometry_msgs` has types with `[f64; 36]` covariance arrays that fail
 because `Default` is not implemented for `[T; N]` where N > 32. After generation, run:
 
 ```bash
-python3 tmp/fix_covariance_default.py src/autoware_*/generated/geometry_msgs
+python3 tmp/fix_covariance_default.py src/autoware_*/generated/geometry_msgs src/autoware_*/generated/geographic_msgs
 ```
 
 Generated crates are `#![no_std]`, use `heapless::String<N>` / `heapless::Vec<T, N>`,
@@ -175,12 +179,16 @@ application code. Always use the `Executor`/`Node` layer.
 ## Known Issues
 
 - **`[f64; 36]` Default**: `Default` is not implemented for `[T; N]` where N > 32. Types
-  like `PoseWithCovariance` need manual `Default` impls. Fix with `tmp/fix_covariance_default.py`.
+  like `PoseWithCovariance` and `GeoPoseWithCovariance` need manual `Default` impls.
+  Fix with `tmp/fix_covariance_default.py` (scans geometry_msgs and geographic_msgs).
 - **f32→f64 precision**: `VelocityReport` fields are `f32`. In tests, compare against
   `value_f32 as f64`, not `value_f64`.
 - **Generated crate edition**: Message crates use edition 2021; algorithm crates use 2024.
 - **Constants in generated msgs**: Constants defined in `.msg` files are private in generated
   modules — define your own constants in application crates.
+- **LLVM SIGSEGV on cross-compile**: `autoware_adapi_v1_msgs` triggers an LLVM crash when
+  building (codegen) in debug mode for `thumbv7em-none-eabihf`. Use `cargo check` (no codegen)
+  for cross-compile verification, or `cargo build --release` for actual binaries.
 
 ## Autoware Source Reference
 
@@ -193,7 +201,7 @@ not alongside `autoware_control_msgs`/`autoware_vehicle_msgs` in `autoware_msgs`
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 1 | Foundation (messages + 3 trivial ports) | Complete |
-| 2 | Emergency Response (MRM chain) | Not Started |
+| 2 | Emergency Response (MRM chain) | Complete |
 | 3 | Safety Gate (vehicle command gate) | Not Started |
 | 4 | Validation Layer (control validator, twist2accel) | Not Started |
 

@@ -1,0 +1,14 @@
+[package]
+name = "autoware_mrm_emergency_stop_operator"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+autoware_control_msgs = { version = "*", default-features = false }
+tier4_system_msgs = { version = "*", default-features = false }
+
+[features]
+default = []
+std = ["autoware_control_msgs/std", "tier4_system_msgs/std"]
