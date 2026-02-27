@@ -4,6 +4,9 @@ path = "generated/autoware_common_msgs"
 [patch.crates-io.autoware_control_msgs]
 path = "generated/autoware_control_msgs"
 
+[patch.crates-io.autoware_planning_msgs]
+path = "generated/autoware_planning_msgs"
+
 [patch.crates-io.autoware_system_msgs]
 path = "generated/autoware_system_msgs"
 

@@ -1,6 +1,6 @@
 # Phase 3: Safety Gate
 
-**Status:** Not Started
+**Status:** Complete
 **Depends on:** Phase 1 (messages), Phase 2 (MRM chain for emergency source)
 **Goal:** Port the vehicle command gate to the safety island so that every command reaching
 the vehicle actuators passes through an independent rate limiter and source arbiter.
@@ -49,8 +49,8 @@ executor.add_timer(33, move || {
 
 ### 3.1 — Core rate limiting and command clamping
 
-- [ ] Algorithm library
-- [ ] Unit tests
+- [x] Algorithm library
+- [x] Unit tests
 
 **Source:** `autoware-repo/src/universe/autoware_universe/control/autoware_vehicle_cmd_gate/`
 **Target:** `src/autoware_vehicle_cmd_gate/`
@@ -60,15 +60,15 @@ current vehicle speed.
 
 Reference speed points: `[0.1, 0.3, 20.0, 30.0]` m/s
 
-| Limit | Values by speed | Unit |
-|-------|-----------------|------|
-| Velocity | 25.0 | m/s |
-| Longitudinal acceleration | [5.0, 5.0, 5.0, 4.0] | m/s² |
-| Longitudinal jerk | [80.0, 5.0, 5.0, 4.0] | m/s³ |
-| Steering angle | [1.0, 1.0, 1.0, 0.8] | rad |
-| Steering rate | [1.0, 1.0, 1.0, 0.8] | rad/s |
-| Lateral acceleration | [5.0, 5.0, 5.0, 4.0] | m/s² |
-| Lateral jerk | [7.0, 7.0, 7.0, 6.0] | m/s³ |
+| Limit                     | Values by speed       | Unit  |
+|---------------------------|-----------------------|-------|
+| Velocity                  | 25.0                  | m/s   |
+| Longitudinal acceleration | [5.0, 5.0, 5.0, 4.0]  | m/s²  |
+| Longitudinal jerk         | [80.0, 5.0, 5.0, 4.0] | m/s³  |
+| Steering angle            | [1.0, 1.0, 1.0, 0.8]  | rad   |
+| Steering rate             | [1.0, 1.0, 1.0, 0.8]  | rad/s |
+| Lateral acceleration      | [5.0, 5.0, 5.0, 4.0]  | m/s²  |
+| Lateral jerk              | [7.0, 7.0, 7.0, 6.0]  | m/s³  |
 
 Special accelerations: `stop_hold = -1.5 m/s²`, `emergency = -2.4 m/s²`.
 
@@ -83,8 +83,8 @@ Core interfaces for this milestone:
 
 ### 3.2 — Source arbitration
 
-- [ ] Algorithm library
-- [ ] Unit tests
+- [x] Algorithm library
+- [x] Unit tests
 
 Add support for multiple command sources with priority-based selection:
 1. **Emergency** (highest) — from MRM operators on the island
@@ -104,8 +104,8 @@ Add support for multiple command sources with priority-based selection:
 
 ### 3.3 — Heartbeat monitoring and diagnostics
 
-- [ ] Algorithm library
-- [ ] Unit tests
+- [x] Algorithm library
+- [x] Unit tests
 
 Add heartbeat monitoring for each command source. If the autonomous source stops sending
 commands for a configurable timeout, the gate publishes a diagnostic error and the MRM
@@ -120,20 +120,20 @@ Publish diagnostic status summarizing gate health, active source, and limit viol
 
 ## Acceptance Criteria
 
-- [ ] Rate limiter clamps acceleration exceeding limits at each reference speed. Unit tests
+- [x] Rate limiter clamps acceleration exceeding limits at each reference speed. Unit tests
       verify clamping at 0.1, 5.0, 20.0, and 30.0 m/s.
-- [ ] Jerk limiting produces smooth transitions (no discontinuities). Verify with a
+- [x] Jerk limiting produces smooth transitions (no discontinuities). Verify with a
       step-input test: command jumps from 0 to max acceleration, output ramps at max jerk.
-- [ ] Steering rate limiting prevents instantaneous steering jumps.
-- [ ] Speed-interpolated limits produce correct intermediate values (linear interpolation
+- [x] Steering rate limiting prevents instantaneous steering jumps.
+- [x] Speed-interpolated limits produce correct intermediate values (linear interpolation
       between reference speed points).
-- [ ] Source arbitration selects emergency commands over autonomous commands when MRM is
+- [x] Source arbitration selects emergency commands over autonomous commands when MRM is
       active.
-- [ ] Source arbitration selects remote commands over autonomous commands when in remote
+- [x] Source arbitration selects remote commands over autonomous commands when in remote
       mode.
-- [ ] Heartbeat timeout for autonomous source triggers diagnostic error within configured
+- [x] Heartbeat timeout for autonomous source triggers diagnostic error within configured
       timeout.
-- [ ] Gate passes through commands unchanged when within all limits.
-- [ ] All crates compile `no_std` for `thumbv7em-none-eabihf`.
-- [ ] Integration test: MRM emergency stop command bypasses autonomous commands through
+- [x] Gate passes through commands unchanged when within all limits.
+- [x] All crates compile `no_std` for `thumbv7em-none-eabihf`.
+- [x] Integration test: MRM emergency stop command bypasses autonomous commands through
       the gate and reaches the output topic.

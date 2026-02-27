@@ -102,3 +102,19 @@ dependencies = [
  "nros-core",
  "nros-serdes",
 ]
+
+[[patch.unused]]
+name = "autoware_common_msgs"
+version = "1.11.0"
+
+[[patch.unused]]
+name = "autoware_planning_msgs"
+version = "1.11.0"
+
+[[patch.unused]]
+name = "nav_msgs"
+version = "4.2.4"
+
+[[patch.unused]]
+name = "unique_identifier_msgs"
+version = "2.2.1"
