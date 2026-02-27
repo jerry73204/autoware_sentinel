@@ -79,6 +79,119 @@ impl VehicleVelocityConverter {
     }
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Helper: create a symbolic f64 from arbitrary bits.
+    fn any_f64() -> f64 {
+        f64::from_bits(kani::any::<u64>())
+    }
+
+    /// Helper: create a symbolic finite f64.
+    fn any_finite_f64() -> f64 {
+        let v = any_f64();
+        kani::assume(!v.is_nan() && v.is_finite());
+        v
+    }
+
+    /// Helper: create a symbolic f32 from arbitrary bits.
+    fn any_f32() -> f32 {
+        f32::from_bits(kani::any::<u32>())
+    }
+
+    /// Helper: create a symbolic finite f32.
+    fn any_finite_f32() -> f32 {
+        let v = any_f32();
+        kani::assume(!v.is_nan() && v.is_finite());
+        v
+    }
+
+    /// Covariance diagonal entries are non-negative; off-diagonal entries are zero.
+    #[kani::proof]
+    fn covariance_valid_diagonal() {
+        let stddev_vx = any_finite_f64();
+        let stddev_wz = any_finite_f64();
+        let conv = VehicleVelocityConverter::new(1.0, stddev_vx, stddev_wz);
+
+        let report = VelocityReport {
+            header: Default::default(),
+            longitudinal_velocity: 0.0,
+            lateral_velocity: 0.0,
+            heading_rate: 0.0,
+        };
+
+        let result = conv.convert(&report);
+        let cov = &result.twist.covariance;
+
+        // Diagonal entries are non-negative (squares)
+        assert!(cov[0] >= 0.0);
+        assert!(cov[7] >= 0.0);
+        assert!(cov[14] >= 0.0);
+        assert!(cov[21] >= 0.0);
+        assert!(cov[28] >= 0.0);
+        assert!(cov[35] >= 0.0);
+
+        // Off-diagonal entries are zero
+        assert!(cov[1] == 0.0);
+        assert!(cov[6] == 0.0);
+        assert!(cov[2] == 0.0);
+        assert!(cov[12] == 0.0);
+    }
+
+    /// f32 → f64 cast preserves sign for non-zero values.
+    #[kani::proof]
+    fn f32_cast_preserves_sign() {
+        let input = any_finite_f32();
+        kani::assume(input != 0.0);
+
+        let conv = VehicleVelocityConverter::new(1.0, 0.2, 0.1);
+        let report = VelocityReport {
+            header: Default::default(),
+            longitudinal_velocity: input,
+            lateral_velocity: 0.0,
+            heading_rate: 0.0,
+        };
+
+        let result = conv.convert(&report);
+        let output = result.twist.twist.linear.x;
+        assert!(output.is_sign_positive() == input.is_sign_positive());
+    }
+
+    /// `convert` never panics for any input (including NaN, Inf, subnormals).
+    #[kani::proof]
+    fn convert_never_panics() {
+        let conv = VehicleVelocityConverter::new(any_f64(), any_f64(), any_f64());
+
+        let report = VelocityReport {
+            header: Default::default(),
+            longitudinal_velocity: any_f32(),
+            lateral_velocity: any_f32(),
+            heading_rate: any_f32(),
+        };
+
+        let _result = conv.convert(&report);
+    }
+
+    /// Output linear.x and angular.z are not NaN when inputs are finite.
+    #[kani::proof]
+    fn convert_output_nan_check() {
+        let scale = any_finite_f64();
+        let conv = VehicleVelocityConverter::new(scale, 0.2, 0.1);
+
+        let report = VelocityReport {
+            header: Default::default(),
+            longitudinal_velocity: any_finite_f32(),
+            lateral_velocity: any_finite_f32(),
+            heading_rate: any_finite_f32(),
+        };
+
+        let result = conv.convert(&report);
+        assert!(!result.twist.twist.linear.x.is_nan());
+        assert!(!result.twist.twist.angular.z.is_nan());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

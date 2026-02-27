@@ -12,3 +12,6 @@ tier4_system_msgs = { version = "*", default-features = false }
 [features]
 default = []
 std = ["autoware_control_msgs/std", "tier4_system_msgs/std"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

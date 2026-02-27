@@ -49,8 +49,11 @@ impl StopFilter {
     }
 
     /// Check if the vehicle is stopped based on linear.x and angular.z velocities.
+    ///
+    /// Uses negated comparisons so that NaN inputs are treated as stopped (safe:
+    /// zeroed output). `NaN.abs() >= threshold` is `false`, so `!(false)` = `true`.
     fn is_stopped(&self, linear: &Vector3, angular: &Vector3) -> bool {
-        linear.x.abs() < self.vx_threshold && angular.z.abs() < self.wz_threshold
+        !(linear.x.abs() >= self.vx_threshold) && !(angular.z.abs() >= self.wz_threshold)
     }
 
     /// Apply the stop filter.
@@ -80,6 +83,165 @@ impl StopFilter {
                 angular: angular.clone(),
                 was_stopped,
             }
+        }
+    }
+}
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Helper: create a symbolic f64 from arbitrary bits.
+    fn any_f64() -> f64 {
+        f64::from_bits(kani::any::<u64>())
+    }
+
+    /// Helper: create a symbolic finite f64.
+    fn any_finite_f64() -> f64 {
+        let v = any_f64();
+        kani::assume(!v.is_nan() && v.is_finite());
+        v
+    }
+
+    /// Helper: create a symbolic positive finite f64.
+    fn any_positive_finite_f64() -> f64 {
+        let v = any_finite_f64();
+        kani::assume(v > 0.0);
+        v
+    }
+
+    /// NaN velocity input produces zeroed (stopped) output.
+    #[kani::proof]
+    fn nan_velocity_zeroes_output() {
+        let vx_thresh = any_positive_finite_f64();
+        let wz_thresh = any_positive_finite_f64();
+        let filter = StopFilter::new(vx_thresh, wz_thresh);
+
+        let linear = Vector3 {
+            x: f64::NAN,
+            y: any_f64(),
+            z: any_f64(),
+        };
+        let angular = Vector3 {
+            x: any_f64(),
+            y: any_f64(),
+            z: any_f64(),
+        };
+
+        let result = filter.apply(&linear, &angular);
+        assert!(
+            result.was_stopped,
+            "NaN velocity must be treated as stopped"
+        );
+        assert!(result.linear.x == 0.0);
+        assert!(result.linear.y == 0.0);
+        assert!(result.linear.z == 0.0);
+        assert!(result.angular.x == 0.0);
+        assert!(result.angular.y == 0.0);
+        assert!(result.angular.z == 0.0);
+    }
+
+    /// Output fields are never NaN for any input.
+    #[kani::proof]
+    fn output_never_nan() {
+        let vx_thresh = any_positive_finite_f64();
+        let wz_thresh = any_positive_finite_f64();
+        let filter = StopFilter::new(vx_thresh, wz_thresh);
+
+        let linear = Vector3 {
+            x: any_f64(),
+            y: any_f64(),
+            z: any_f64(),
+        };
+        let angular = Vector3 {
+            x: any_f64(),
+            y: any_f64(),
+            z: any_f64(),
+        };
+
+        let result = filter.apply(&linear, &angular);
+        assert!(!result.linear.x.is_nan());
+        assert!(!result.linear.y.is_nan());
+        assert!(!result.linear.z.is_nan());
+        assert!(!result.angular.x.is_nan());
+        assert!(!result.angular.y.is_nan());
+        assert!(!result.angular.z.is_nan());
+    }
+
+    /// `apply` never panics for any input (including NaN, Inf, subnormals).
+    #[kani::proof]
+    fn apply_never_panics() {
+        let filter = StopFilter::new(any_f64(), any_f64());
+
+        let linear = Vector3 {
+            x: any_f64(),
+            y: any_f64(),
+            z: any_f64(),
+        };
+        let angular = Vector3 {
+            x: any_f64(),
+            y: any_f64(),
+            z: any_f64(),
+        };
+
+        let _result = filter.apply(&linear, &angular);
+    }
+
+    /// When stopped, all output components are exactly zero.
+    #[kani::proof]
+    fn stopped_means_all_zeros() {
+        let vx_thresh = any_positive_finite_f64();
+        let wz_thresh = any_positive_finite_f64();
+        let filter = StopFilter::new(vx_thresh, wz_thresh);
+
+        let linear = Vector3 {
+            x: any_f64(),
+            y: any_f64(),
+            z: any_f64(),
+        };
+        let angular = Vector3 {
+            x: any_f64(),
+            y: any_f64(),
+            z: any_f64(),
+        };
+
+        let result = filter.apply(&linear, &angular);
+        if result.was_stopped {
+            assert!(result.linear.x == 0.0);
+            assert!(result.linear.y == 0.0);
+            assert!(result.linear.z == 0.0);
+            assert!(result.angular.x == 0.0);
+            assert!(result.angular.y == 0.0);
+            assert!(result.angular.z == 0.0);
+        }
+    }
+
+    /// When moving, output is bit-identical passthrough of input.
+    #[kani::proof]
+    fn moving_means_exact_passthrough() {
+        let vx_thresh = any_positive_finite_f64();
+        let wz_thresh = any_positive_finite_f64();
+        let filter = StopFilter::new(vx_thresh, wz_thresh);
+
+        let linear = Vector3 {
+            x: any_f64(),
+            y: any_f64(),
+            z: any_f64(),
+        };
+        let angular = Vector3 {
+            x: any_f64(),
+            y: any_f64(),
+            z: any_f64(),
+        };
+
+        let result = filter.apply(&linear, &angular);
+        if !result.was_stopped {
+            assert!(result.linear.x.to_bits() == linear.x.to_bits());
+            assert!(result.linear.y.to_bits() == linear.y.to_bits());
+            assert!(result.linear.z.to_bits() == linear.z.to_bits());
+            assert!(result.angular.x.to_bits() == angular.x.to_bits());
+            assert!(result.angular.y.to_bits() == angular.y.to_bits());
+            assert!(result.angular.z.to_bits() == angular.z.to_bits());
         }
     }
 }

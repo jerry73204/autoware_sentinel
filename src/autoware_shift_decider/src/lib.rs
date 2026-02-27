@@ -87,6 +87,125 @@ impl ShiftDecider {
     }
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Helper: create a symbolic f32 from arbitrary bits.
+    fn any_f32() -> f32 {
+        f32::from_bits(kani::any::<u32>())
+    }
+
+    fn make_state(s: u8) -> AutowareState {
+        AutowareState {
+            state: s,
+            ..Default::default()
+        }
+    }
+
+    fn make_control(velocity: f32) -> Control {
+        let mut ctrl = Control::default();
+        ctrl.longitudinal.velocity = velocity;
+        ctrl
+    }
+
+    fn make_gear(report: u8) -> GearReport {
+        GearReport {
+            report,
+            ..Default::default()
+        }
+    }
+
+    /// Output is always a valid gear (DRIVE, REVERSE, PARK) or matches current_gear.report.
+    #[kani::proof]
+    fn output_is_valid_gear() {
+        let autoware_state_val: u8 = kani::any();
+        kani::assume(
+            autoware_state_val == 2
+                || autoware_state_val == 3
+                || autoware_state_val == 5
+                || autoware_state_val == 6,
+        );
+
+        let gear_report_val: u8 = kani::any();
+        kani::assume(
+            gear_report_val == gear::DRIVE
+                || gear_report_val == gear::REVERSE
+                || gear_report_val == gear::PARK,
+        );
+
+        let park_on_goal: bool = kani::any();
+        let velocity = any_f32();
+        kani::assume(!velocity.is_nan() && velocity.is_finite());
+
+        let mut sd = ShiftDecider::new(park_on_goal);
+        let result = sd.decide(
+            &make_state(autoware_state_val),
+            &make_control(velocity),
+            &make_gear(gear_report_val),
+        );
+
+        assert!(
+            result == gear::DRIVE || result == gear::REVERSE || result == gear::PARK,
+            "output must be a valid gear"
+        );
+    }
+
+    /// Dead-zone velocity holds previous command (DRIVE).
+    #[kani::proof]
+    fn dead_zone_holds_previous() {
+        let park_on_goal: bool = kani::any();
+        let mut sd = ShiftDecider::new(park_on_goal);
+
+        // Step 1: establish DRIVE with forward velocity
+        let result1 = sd.decide(
+            &make_state(state::DRIVING),
+            &make_control(1.0),
+            &make_gear(gear::DRIVE),
+        );
+        assert!(result1 == gear::DRIVE);
+
+        // Step 2: dead-zone velocity — must hold DRIVE
+        let dz_vel = any_f32();
+        kani::assume(!dz_vel.is_nan() && dz_vel.is_finite());
+        kani::assume(dz_vel >= -VEL_THRESHOLD && dz_vel <= VEL_THRESHOLD);
+
+        let result2 = sd.decide(
+            &make_state(state::DRIVING),
+            &make_control(dz_vel),
+            &make_gear(gear::DRIVE),
+        );
+        assert!(result2 == gear::DRIVE, "dead-zone must hold previous DRIVE");
+    }
+
+    /// NaN velocity holds previous command (DRIVE).
+    #[kani::proof]
+    fn nan_velocity_holds_previous() {
+        let park_on_goal: bool = kani::any();
+        let mut sd = ShiftDecider::new(park_on_goal);
+
+        // Step 1: establish DRIVE
+        let result1 = sd.decide(
+            &make_state(state::DRIVING),
+            &make_control(1.0),
+            &make_gear(gear::DRIVE),
+        );
+        assert!(result1 == gear::DRIVE);
+
+        // Step 2: NaN velocity — NaN < threshold is false, NaN > threshold is false
+        // → falls to dead-zone → holds previous (DRIVE)
+        let result2 = sd.decide(
+            &make_state(state::DRIVING),
+            &make_control(f32::NAN),
+            &make_gear(gear::DRIVE),
+        );
+        assert!(
+            result2 == gear::DRIVE,
+            "NaN velocity must hold previous DRIVE"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

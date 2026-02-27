@@ -12,3 +12,6 @@ geometry_msgs = { version = "*", default-features = false }
 [features]
 default = []
 std = ["autoware_vehicle_msgs/std", "geometry_msgs/std"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

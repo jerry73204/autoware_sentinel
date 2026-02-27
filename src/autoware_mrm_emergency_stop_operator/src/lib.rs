@@ -127,6 +127,30 @@ impl EmergencyStopOperator {
     }
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    /// Bounded convergence: from 20 m/s, the operator must reach velocity == 0.0
+    /// within 300 steps at 30 Hz.
+    #[kani::proof]
+    #[kani::unwind(301)]
+    fn convergence_from_20_mps() {
+        let mut op = EmergencyStopOperator::new(Params::default());
+        op.set_initial_velocity(20.0);
+        op.operate(true);
+
+        let dt: f32 = 1.0 / 30.0;
+        let mut step = 0u32;
+        while op.velocity() > 0.0 && step < 300 {
+            op.update(dt);
+            step += 1;
+        }
+        assert!(op.velocity() == 0.0, "must reach zero");
+        assert!(step <= 300, "must converge in 300 steps");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

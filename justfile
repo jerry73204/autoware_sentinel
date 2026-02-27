@@ -42,3 +42,16 @@ ci: format-check cross-check test
 # Clean all packages
 clean:
     for pkg in {{ packages }}; do echo "=== $pkg ===" && (cd "src/$pkg" && just clean); done
+
+# Run Kani verification on all harness crates
+verify-kani:
+    for pkg in autoware_stop_filter autoware_vehicle_velocity_converter autoware_shift_decider autoware_mrm_emergency_stop_operator; do \
+        echo "=== Kani: $pkg ===" && (cd "src/$pkg" && cargo kani); \
+    done
+
+# Run Verus verification
+verify-verus:
+    cd src/verification && ~/.verus/verus-main/source/target-verus/release/verus src/lib.rs
+
+# Run all verification
+verify: verify-kani verify-verus
