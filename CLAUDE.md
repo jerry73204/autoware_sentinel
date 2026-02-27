@@ -26,7 +26,10 @@ autoware-nano-ros/
 │   ├── autoware_mrm_comfortable_stop_operator/ # Phase 2 — gentle deceleration
 │   ├── autoware_heartbeat_watchdog/ # Phase 2 — main compute heartbeat monitor
 │   ├── autoware_mrm_handler/        # Phase 2 — MRM orchestrator state machine
-│   └── autoware_vehicle_cmd_gate/   # Phase 3 — rate limiting + source arbitration
+│   ├── autoware_vehicle_cmd_gate/   # Phase 3 — rate limiting + source arbitration
+│   ├── autoware_twist2accel/        # Phase 4 — velocity→acceleration estimator
+│   ├── autoware_control_validator/  # Phase 4 — command safety validation
+│   └── autoware_operation_mode_transition_manager/ # Phase 4 — mode transitions
 ├── docs/roadmap/                    # Phase docs (1–4)
 ├── justfile                         # Root convenience recipes
 ├── autoware-repo -> ~/repos/autoware/1.5.0-ws  # Autoware source (symlink)
@@ -205,7 +208,7 @@ not alongside `autoware_control_msgs`/`autoware_vehicle_msgs` in `autoware_msgs`
 | 1 | Foundation (messages + 3 trivial ports) | Complete |
 | 2 | Emergency Response (MRM chain) | Complete |
 | 3 | Safety Gate (vehicle command gate) | Complete |
-| 4 | Validation Layer (control validator, twist2accel) | Not Started |
+| 4 | Validation Layer (control validator, twist2accel) | Complete |
 
 See `docs/roadmap/` for detailed phase docs.
 

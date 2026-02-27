@@ -1,0 +1,27 @@
+[package]
+name = "autoware_operation_mode_transition_manager"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+autoware_adapi_v1_msgs = { version = "*", default-features = false }
+autoware_vehicle_msgs = { version = "*", default-features = false }
+nav_msgs = { version = "*", default-features = false }
+autoware_control_msgs = { version = "*", default-features = false }
+
+# Workaround: LLVM SIGSEGV in ARM register scavenger when compiling
+# autoware_adapi_v1_msgs at opt-level=0 for thumbv7em-none-eabihf.
+# See: https://github.com/llvm/llvm-project/issues/64277
+[profile.dev.package.autoware_adapi_v1_msgs]
+opt-level = 1
+
+[features]
+default = []
+std = [
+    "autoware_adapi_v1_msgs/std",
+    "autoware_vehicle_msgs/std",
+    "nav_msgs/std",
+    "autoware_control_msgs/std",
+]

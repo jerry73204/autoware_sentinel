@@ -1,0 +1,15 @@
+[package]
+name = "autoware_control_validator"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+autoware_control_msgs = { version = "*", default-features = false }
+nav_msgs = { version = "*", default-features = false }
+geometry_msgs = { version = "*", default-features = false }
+
+[features]
+default = []
+std = ["autoware_control_msgs/std", "nav_msgs/std", "geometry_msgs/std"]

@@ -1,0 +1,14 @@
+[package]
+name = "autoware_twist2accel"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+nav_msgs = { version = "*", default-features = false }
+geometry_msgs = { version = "*", default-features = false }
+
+[features]
+default = []
+std = ["nav_msgs/std", "geometry_msgs/std"]
