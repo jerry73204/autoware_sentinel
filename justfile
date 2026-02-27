@@ -9,15 +9,15 @@ default:
 # Generate bindings for all packages
 generate-bindings:
     #!/usr/bin/env bash
-    set -euo pipefail
+    set -eo pipefail
     source scripts/activate_autoware.sh
     for pkg in {{ packages }}; do
         echo "=== $pkg ==="
         (cd "src/$pkg" && cargo nano-ros generate-rust --config --nano-ros-path ../../../nano-ros/packages/core --force)
     done
 
-# Build all packages
-build:
+# Build all packages (generates bindings first)
+build: generate-bindings
     for pkg in {{ packages }}; do echo "=== $pkg ===" && (cd "src/$pkg" && cargo build); done
 
 # Test all packages
