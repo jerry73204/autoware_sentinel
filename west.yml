@@ -1,0 +1,51 @@
+# Autoware Sentinel West Manifest
+#
+# This manifest defines the Zephyr workspace for the Autoware Sentinel
+# safety island application.
+#
+# Setup:
+#   ./scripts/zephyr/setup.sh
+#   source ../autoware-sentinel-workspace/env.sh
+#
+# Build:
+#   cd ../autoware-sentinel-workspace
+#   west build -b native_sim/native/64 autoware-sentinel/src/autoware_sentinel
+
+manifest:
+  version: "1.0"
+
+  remotes:
+    - name: zephyrproject-rtos
+      url-base: https://github.com/zephyrproject-rtos
+
+  projects:
+    # Zephyr RTOS
+    - name: zephyr
+      remote: zephyrproject-rtos
+      revision: v3.7.0
+      import:
+        # Import Zephyr's modules, filtered to essentials
+        name-allowlist:
+          # Core
+          - cmsis
+          - picolibc
+          # Crypto
+          - mbedtls
+          - tinycrypt
+          # HALs (for target boards)
+          - hal_stm32    # STM32H743 (development prototype)
+          - hal_nxp      # NXP S32K344 (production safety MCU)
+          # Bootloader
+          - mcuboot
+          # Tools
+          - net-tools
+
+    # Rust language support for Zephyr
+    - name: zephyr-lang-rust
+      remote: zephyrproject-rtos
+      revision: main
+      path: modules/lang/rust
+
+  self:
+    # autoware-sentinel is the manifest repository
+    path: autoware-sentinel

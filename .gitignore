@@ -8,8 +8,18 @@
 __pycache__/
 *.py[oc]
 
-# Create by colcon
+# Created by colcon
 /build/
 /install/
 /log/
 
+# Temporary scripts and data
+/tmp/
+
+# Verus verification crate build output
+src/verification/target
+
+# Zephyr workspace
+scripts/zephyr/downloads/
+scripts/zephyr/sdk/
+zephyr-workspace

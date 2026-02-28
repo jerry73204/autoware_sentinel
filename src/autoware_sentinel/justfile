@@ -1,0 +1,18 @@
+# justfile for autoware_sentinel (Zephyr application)
+#
+# Message generation uses the same cargo-nano-ros tool as algorithm crates.
+# Building is done via `west build`, not `cargo build`.
+
+default:
+    @just --list
+
+# Generate message crates into generated/
+generate:
+    cargo nano-ros generate-rust --force
+
+# Clean generated artifacts
+clean:
+    rm -rf generated target
+
+clean-bindings:
+    rm -rf generated

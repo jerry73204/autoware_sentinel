@@ -1,8 +1,11 @@
-# autoware-nano-ros
+# Autoware Sentinel
 
-Port of selected Autoware packages to [nano-ros](../nano-ros/), a ROS 2 runtime focused on
-formal verification and real-time safety for embedded systems. The goal is a "safety island"
-that can independently bring an autonomous vehicle to a safe stop.
+An independent safety island for autonomous vehicles, porting selected Autoware packages to
+[nano-ros](../nano-ros/), a ROS 2 runtime focused on formal verification and real-time safety
+for embedded systems. Runs on a dedicated safety MCU to bring the vehicle to a safe stop
+when the main compute fails.
+
+**Repository:** https://github.com/jerry73204/autoware_sentinel.git
 
 ## Project Structure
 
@@ -29,8 +32,19 @@ autoware-nano-ros/
 │   ├── autoware_vehicle_cmd_gate/   # Phase 3 — rate limiting + source arbitration
 │   ├── autoware_twist2accel/        # Phase 4 — velocity→acceleration estimator
 │   ├── autoware_control_validator/  # Phase 4 — command safety validation
-│   └── autoware_operation_mode_transition_manager/ # Phase 4 — mode transitions
-├── docs/roadmap/                    # Phase docs (1–4)
+│   ├── autoware_operation_mode_transition_manager/ # Phase 4 — mode transitions
+│   ├── verification/                # Phase 5 — Verus formal proofs
+│   └── autoware_sentinel/           # Phase 6 — Zephyr application (TBD)
+├── docs/
+│   ├── roadmap/                     # Phase docs (1–6)
+│   ├── guides/                      # Developer guides
+│   │   └── zephyr-setup.md         # Zephyr workspace setup guide
+│   └── research/                    # Architecture research
+├── scripts/
+│   ├── activate_autoware.sh         # Source Autoware ROS 2 environment
+│   └── zephyr/
+│       └── setup.sh                 # Zephyr workspace initialization
+├── west.yml                         # Zephyr west manifest
 ├── justfile                         # Root convenience recipes
 ├── autoware-repo -> ~/repos/autoware/1.5.0-ws  # Autoware source (symlink)
 └── CLAUDE.md                        # This file
@@ -56,6 +70,9 @@ just cross-check       # cargo check --target thumbv7em-none-eabihf in each
 just generate-bindings # regenerate messages in all packages
 just format            # cargo fmt on all packages
 just ci                # format-check + cross-check + test
+just verify-kani       # run Kani verification on all harness crates
+just verify-verus      # run Verus verification
+just verify            # run all verification (Kani + Verus)
 ```
 
 All algorithm crates must be `#![no_std]` and cross-compile to `thumbv7em-none-eabihf`.
@@ -201,6 +218,43 @@ Autoware 1.5.0 workspace is symlinked at `autoware-repo` (points to
 `~/repos/autoware/1.5.0-ws`). `autoware_common_msgs` lives in the 1.5.0-ws source,
 not alongside `autoware_control_msgs`/`autoware_vehicle_msgs` in `autoware_msgs`.
 
+## Formal Verification (Phase 5)
+
+Kani harnesses live inline in production crates (`#[cfg(kani)] mod verification`).
+Verus proofs live in a standalone crate (`src/verification/`).
+
+### Kani harnesses (13 total)
+
+- **stop_filter** (5): NaN→zero, output never NaN, panic-freedom, stopped⇒zeros, moving⇒passthrough
+- **vehicle_velocity_converter** (4): covariance diagonal, f32→f64 sign, panic-freedom, output NaN
+- **shift_decider** (3): valid gear, dead-zone hold, NaN velocity hold
+- **emergency_stop_operator** (1): bounded convergence (`#[kani::unwind(301)]`)
+
+Crates with Kani harnesses need `[lints.rust]` in `Cargo.toml`:
+
+```toml
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+```
+
+### Verus verification crate (`src/verification/`)
+
+Standalone crate (not in workspace) using `vstd`. Integer-scaled ghost models avoid
+floating-point reasoning. Modules: `ghost_types`, `shift_decider`, `emergency_stop`,
+`mrm_handler`.
+
+### NaN safety pattern
+
+Use negated comparisons for NaN-safe thresholds:
+
+```rust
+// WRONG: NaN.abs() < threshold → false (NaN passes through)
+linear.x.abs() < self.vx_threshold
+
+// RIGHT: !(NaN.abs() >= threshold) → !(false) → true (NaN treated as stopped = safe)
+!(linear.x.abs() >= self.vx_threshold)
+```
+
 ## Development Phases
 
 | Phase | Focus | Status |
@@ -209,6 +263,8 @@ not alongside `autoware_control_msgs`/`autoware_vehicle_msgs` in `autoware_msgs`
 | 2 | Emergency Response (MRM chain) | Complete |
 | 3 | Safety Gate (vehicle command gate) | Complete |
 | 4 | Validation Layer (control validator, twist2accel) | Complete |
+| 5 | Formal Verification (Kani + Verus) | Complete |
+| 6 | Zephyr Application (single binary) | In progress |
 
 See `docs/roadmap/` for detailed phase docs.
 
@@ -216,6 +272,25 @@ See `docs/roadmap/` for detailed phase docs.
 
 Place temporary Python/shell scripts in `tmp/` at the repo root. This directory is
 gitignored and used for one-off data extraction, analysis, or debugging scripts.
+
+## Zephyr Build (Phase 6)
+
+The safety island deploys as a single Zephyr application. Setup:
+
+```bash
+./scripts/zephyr/setup.sh                         # one-time workspace init
+source ../autoware-sentinel-workspace/env.sh       # set ZEPHYR_BASE, etc.
+cd ../autoware-sentinel-workspace
+west build -b native_sim/native/64 autoware-sentinel/src/autoware_sentinel
+```
+
+Key files:
+- `west.yml` — West manifest (Zephyr v3.7.0, zephyr-lang-rust)
+- `scripts/zephyr/setup.sh` — Downloads SDK, creates workspace, symlinks nano-ros
+- `src/autoware_sentinel/` — Zephyr application crate (Phase 6.2+)
+
+nano-ros is registered as a Zephyr module via `ZEPHYR_EXTRA_MODULES` in `env.sh`.
+See `docs/guides/zephyr-setup.md` for full instructions.
 
 ## nano-ros Reference
 
