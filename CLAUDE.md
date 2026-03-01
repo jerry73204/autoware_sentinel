@@ -35,7 +35,21 @@ autoware-nano-ros/
 │   ├── autoware_operation_mode_transition_manager/ # Phase 4 — mode transitions
 │   ├── verification/                # Phase 5 — Verus formal proofs
 │   ├── autoware_sentinel/           # Phase 6 — Zephyr application
-│   └── autoware_sentinel_linux/     # Phase 7 — Linux native binary
+│   └── autoware_sentinel_linux/     # Phase 7.1 — Linux native binary
+├── tests/                           # Phase 7.2 — Integration tests (nextest)
+│   ├── Cargo.toml                   # sentinel-tests crate
+│   ├── src/
+│   │   ├── lib.rs                   # TestError, helpers (count_pattern, wait_for_port)
+│   │   ├── process.rs               # ManagedProcess, process group cleanup
+│   │   ├── ros2.rs                  # Ros2Process (topic pub/echo with rmw_zenoh_cpp)
+│   │   └── fixtures/                # rstest fixtures
+│   │       ├── mod.rs
+│   │       ├── zenohd_router.rs     # ZenohRouter (ephemeral port allocation)
+│   │       └── sentinel.rs          # sentinel_binary(), start_sentinel()
+│   └── tests/
+│       └── transport_smoke.rs       # Sentinel ↔ ROS 2 transport tests (9 tests)
+├── .config/
+│   └── nextest.toml                 # nextest profiles, test group serialization
 ├── docs/
 │   ├── roadmap/                     # Phase docs (1–7)
 │   ├── guides/                      # Developer guides
@@ -65,16 +79,19 @@ just test            # cargo test
 Root justfile for convenience:
 
 ```bash
-just build             # build all packages + Zephyr application
-just build-zephyr      # build Zephyr application only (native_sim)
-just test              # test all packages
-just cross-check       # cargo check --target thumbv7em-none-eabihf in each
-just generate-bindings # regenerate messages in all packages
-just format            # cargo fmt on all packages
-just ci                # format-check + cross-check + test
-just verify-kani       # run Kani verification on all harness crates
-just verify-verus      # run Verus verification
-just verify            # run all verification (Kani + Verus)
+just build              # build all packages + Zephyr + Linux sentinel (with --tests)
+just build-zephyr       # build Zephyr application only (native_sim)
+just build-sentinel-linux # build Linux sentinel binary
+just test               # test all packages (unit tests)
+just test-integration   # run integration tests with nextest
+just test-transport     # run transport smoke tests only
+just cross-check        # cargo check --target thumbv7em-none-eabihf in each
+just generate-bindings  # regenerate messages in all packages
+just format             # cargo fmt on all packages
+just ci                 # format-check + cross-check + test
+just verify-kani        # run Kani verification on all harness crates
+just verify-verus       # run Verus verification
+just verify             # run all verification (Kani + Verus)
 ```
 
 All algorithm crates must be `#![no_std]` and cross-compile to `thumbv7em-none-eabihf`.
@@ -267,7 +284,7 @@ linear.x.abs() < self.vx_threshold
 | 4 | Validation Layer (control validator, twist2accel) | Complete |
 | 5 | Formal Verification (Kani + Verus) | Complete |
 | 6 | Zephyr Application (single binary) | In progress |
-| 7 | Integration Testing (Autoware planning simulator) | Not started |
+| 7 | Integration Testing (Autoware planning simulator) | In progress (7.1–7.2 complete) |
 
 See `docs/roadmap/` for detailed phase docs. Roadmap docs use `- [ ]` / `- [x]` checkboxes
 on subphase headers and acceptance criteria to track completion progress.
@@ -295,6 +312,49 @@ Key files:
 
 nano-ros is registered as a Zephyr module via `ZEPHYR_EXTRA_MODULES` in `env.sh`.
 See `docs/guides/zephyr-setup.md` for full instructions.
+
+## Integration Testing (Phase 7)
+
+Integration tests live in `tests/` as a standalone crate (`sentinel-tests`) run with
+[nextest](https://nexte.st/). Tests verify bidirectional message flow between the sentinel
+Linux binary and ROS 2 (`rmw_zenoh_cpp`) through a shared zenohd router.
+
+### Running tests
+
+```bash
+just test-integration   # all integration tests
+just test-transport     # transport smoke tests only
+cd tests && cargo nextest run -E 'test(test_sentinel_starts)'  # single test
+```
+
+### Test infrastructure
+
+- **`tests/src/process.rs`** — `ManagedProcess` with RAII process group cleanup
+  (`setpgid` + `PR_SET_PDEATHSIG(SIGKILL)`). Never leaves orphan processes.
+- **`tests/src/ros2.rs`** — `Ros2Process` wraps `ros2 topic pub/echo` with
+  `rmw_zenoh_cpp` transport and Autoware message env.
+- **`tests/src/fixtures/`** — rstest fixtures:
+  - `zenohd_unique` — starts zenohd on an OS-assigned ephemeral port (parallel-safe)
+  - `sentinel_binary` — builds the Linux sentinel once per test run (`OnceCell`)
+  - `start_sentinel()` — spawns sentinel as `ManagedProcess`, waits for "Executor ready"
+
+### nextest configuration (`.config/nextest.toml`)
+
+Transport smoke tests run sequentially (`max-threads = 1`) to avoid port/resource contention.
+Slow timeout is 60s (these tests involve multi-process coordination with sleep waits).
+
+### Prerequisites
+
+- zenohd built locally (`~/repos/nano-ros/build/zenohd/zenohd`)
+- ROS 2 Humble with `rmw_zenoh_cpp` installed
+- Autoware message packages (`/opt/autoware/1.5.0/`)
+
+### Adding new integration tests
+
+1. Create a new test file in `tests/tests/`
+2. Register it as `[[test]]` in `tests/Cargo.toml`
+3. Use rstest fixtures from `sentinel_tests::fixtures`
+4. If tests need serialization, add to a test group in `.config/nextest.toml`
 
 ## nano-ros Reference
 
