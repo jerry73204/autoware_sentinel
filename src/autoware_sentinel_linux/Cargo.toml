@@ -1,0 +1,51 @@
+# Autoware Sentinel — Linux Native Binary
+#
+# Std-enabled Linux adaptation of the Zephyr safety island application.
+# Reuses all 11 algorithm crates with Autoware-compatible topic names.
+# Build with: cargo build
+# Run with: RUST_LOG=info cargo run
+
+[package]
+name = "autoware_sentinel_linux"
+version = "0.1.0"
+edition = "2024"
+description = "Autoware Sentinel safety island — Linux native binary"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+# Logging
+log = "0.4"
+env_logger = "0.11"
+
+# nros unified API (std + POSIX + Zenoh + ROS Humble CDR compat)
+nros = { version = "*", default-features = false, features = ["std", "rmw-zenoh", "platform-posix", "ros-humble"] }
+
+# Algorithm crates (Phase 1–4)
+autoware_stop_filter = { path = "../autoware_stop_filter" }
+autoware_vehicle_velocity_converter = { path = "../autoware_vehicle_velocity_converter" }
+autoware_shift_decider = { path = "../autoware_shift_decider" }
+autoware_mrm_emergency_stop_operator = { path = "../autoware_mrm_emergency_stop_operator" }
+autoware_mrm_comfortable_stop_operator = { path = "../autoware_mrm_comfortable_stop_operator" }
+autoware_heartbeat_watchdog = { path = "../autoware_heartbeat_watchdog" }
+autoware_mrm_handler = { path = "../autoware_mrm_handler" }
+autoware_vehicle_cmd_gate = { path = "../autoware_vehicle_cmd_gate" }
+autoware_twist2accel = { path = "../autoware_twist2accel" }
+autoware_control_validator = { path = "../autoware_control_validator" }
+autoware_operation_mode_transition_manager = { path = "../autoware_operation_mode_transition_manager" }
+
+# Message crates (resolved via [patch.crates-io] in .cargo/config.toml)
+autoware_adapi_v1_msgs = { version = "*", default-features = false }
+autoware_control_msgs = { version = "*", default-features = false }
+autoware_system_msgs = { version = "*", default-features = false }
+autoware_vehicle_msgs = { version = "*", default-features = false }
+geometry_msgs = { version = "*", default-features = false }
+nav_msgs = { version = "*", default-features = false }
+tier4_system_msgs = { version = "*", default-features = false }
+
+# Workaround: LLVM SIGSEGV in ARM register scavenger when compiling
+# autoware_adapi_v1_msgs at opt-level=0 for thumbv7em-none-eabihf.
+# Not needed for native x86, but kept for consistency.
+# See: https://github.com/llvm/llvm-project/issues/64277
+[profile.dev.package.autoware_adapi_v1_msgs]
+opt-level = 1

@@ -34,7 +34,8 @@ autoware-nano-ros/
 │   ├── autoware_control_validator/  # Phase 4 — command safety validation
 │   ├── autoware_operation_mode_transition_manager/ # Phase 4 — mode transitions
 │   ├── verification/                # Phase 5 — Verus formal proofs
-│   └── autoware_sentinel/           # Phase 6 — Zephyr application (TBD)
+│   ├── autoware_sentinel/           # Phase 6 — Zephyr application
+│   └── autoware_sentinel_linux/     # Phase 7 — Linux native binary
 ├── docs/
 │   ├── roadmap/                     # Phase docs (1–7)
 │   ├── guides/                      # Developer guides

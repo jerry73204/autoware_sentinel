@@ -1,0 +1,25 @@
+# justfile for autoware_sentinel_linux (Linux native binary)
+#
+# Message generation uses the same cargo-nano-ros tool as algorithm crates.
+
+default:
+    @just --list
+
+# Generate message crates into generated/
+generate:
+    cargo nano-ros generate-rust --config --nano-ros-path ../../../nano-ros/packages/core --force
+
+# Build the Linux binary
+build:
+    cargo build
+
+# Run with info-level logging
+run:
+    RUST_LOG=info cargo run
+
+# Clean build artifacts
+clean:
+    rm -rf generated target
+
+clean-bindings:
+    rm -rf generated

@@ -18,10 +18,14 @@ generate-bindings:
         echo "=== $pkg ==="
         (cd "src/$pkg" && cargo nano-ros generate-rust --config --nano-ros-path ../../../nano-ros/packages/core --force)
     done
+    echo "=== autoware_sentinel ==="
+    (cd "src/autoware_sentinel" && cargo nano-ros generate-rust --force)
+    echo "=== autoware_sentinel_linux ==="
+    (cd "src/autoware_sentinel_linux" && cargo nano-ros generate-rust --config --nano-ros-path ../../../nano-ros/packages/core --force)
 
-# Build all packages (generates bindings first) + Zephyr application
-build: generate-bindings build-zephyr
-    for pkg in {{ packages }}; do echo "=== $pkg ===" && (cd "src/$pkg" && cargo build); done
+# Build all packages (generates bindings first) + Zephyr + Linux sentinel
+build: generate-bindings build-zephyr build-sentinel-linux
+    for pkg in {{ packages }}; do echo "=== $pkg ===" && (cd "src/$pkg" && cargo build --tests); done
 
 # Build Zephyr application (native_sim)
 build-zephyr:
@@ -30,6 +34,14 @@ build-zephyr:
     source {{ env_script }}
     cd {{ workspace_dir }}
     west build -b native_sim/native/64 autoware-sentinel/src/autoware_sentinel -d build/sentinel
+
+# Build Linux sentinel binary
+build-sentinel-linux:
+    cd src/autoware_sentinel_linux && cargo build
+
+# Run Linux sentinel binary
+run-sentinel-linux:
+    cd src/autoware_sentinel_linux && RUST_LOG=info cargo run
 
 # Test all packages
 test:

@@ -27,24 +27,24 @@ Integration testing proves:
 
 The sentinel replaces 7 Autoware system/control nodes:
 
-| Node | Full ROS Path | Package |
-|------|---------------|---------|
-| vehicle_cmd_gate | `/control/vehicle_cmd_gate` | `autoware_vehicle_cmd_gate` |
-| mrm_handler | `/system/mrm_handler` | `autoware_mrm_handler` |
-| mrm_emergency_stop_operator | `/system/mrm_emergency_stop_operator/...` | `autoware_mrm_emergency_stop_operator` |
-| mrm_comfortable_stop_operator | `/system/mrm_comfortable_stop_operator/...` | `autoware_mrm_comfortable_stop_operator` |
-| shift_decider | `/control/shift_decider` | (in control container) |
-| control_validator | `/control/control_validator` | `autoware_control_validator` |
+| Node                              | Full ROS Path                                         | Package                                      |
+|-----------------------------------|-------------------------------------------------------|----------------------------------------------|
+| vehicle_cmd_gate                  | `/control/vehicle_cmd_gate`                           | `autoware_vehicle_cmd_gate`                  |
+| mrm_handler                       | `/system/mrm_handler`                                 | `autoware_mrm_handler`                       |
+| mrm_emergency_stop_operator       | `/system/mrm_emergency_stop_operator/...`             | `autoware_mrm_emergency_stop_operator`       |
+| mrm_comfortable_stop_operator     | `/system/mrm_comfortable_stop_operator/...`           | `autoware_mrm_comfortable_stop_operator`     |
+| shift_decider                     | `/control/shift_decider`                              | (in control container)                       |
+| control_validator                 | `/control/control_validator`                          | `autoware_control_validator`                 |
 | operation_mode_transition_manager | `/control/autoware_operation_mode_transition_manager` | `autoware_operation_mode_transition_manager` |
 
 ## Subphases
 
 ### 7.1 — Linux native binary (`autoware_sentinel_linux`)
 
-- [ ] Package created and builds
-- [ ] Topic names mapped to Autoware conventions
-- [ ] Engagement flow (OperationModeState + ChangeOperationMode service)
-- [ ] Root justfile recipes added
+- [x] Package created and builds
+- [x] Topic names mapped to Autoware conventions
+- [x] Engagement flow (OperationModeState + ChangeOperationMode service)
+- [x] Root justfile recipes added
 
 Create `src/autoware_sentinel_linux/`, a std-enabled Linux binary that reuses the
 `SafetyIsland` struct and algorithm wiring from the Zephyr `lib.rs` with only platform-layer
@@ -54,50 +54,50 @@ changes.
 
 **Platform differences from Zephyr sentinel:**
 
-| Aspect | Zephyr Sentinel | Linux Binary |
-|--------|-----------------|--------------|
-| Package name | `rustapp` | `autoware_sentinel_linux` |
-| Crate type | `staticlib` (linked into Zephyr) | `bin` (standalone executable) |
-| Entry point | `extern "C" fn rust_main()` | `fn main()` |
-| Logging | `zephyr::set_logger()` | `env_logger::init()` |
-| Clock | `zephyr::sys::uptime_get()` | `std::time::Instant` + `OnceLock` |
-| Executor config | `ExecutorConfig::new("tcp/192.0.2.2:7447")` | `ExecutorConfig::from_env().node_name("sentinel")` |
-| Spin | `executor.spin(10)` (no_std) | `executor.spin_blocking(SpinOptions::default())` (std) |
-| nros features | `["rmw-zenoh", "platform-zephyr"]` | `["std", "rmw-zenoh", "platform-posix", "ros-humble"]` |
-| Zephyr dep | `zephyr = "0.1.0"` | Removed; add `env_logger = "0.11"` |
-| `#![no_std]` | Yes | No (removed) |
-| Heartbeat timeout | 500 ms | 5000 ms (Autoware init is slow) |
+| Aspect            | Zephyr Sentinel                             | Linux Binary                                           |
+|-------------------|---------------------------------------------|--------------------------------------------------------|
+| Package name      | `rustapp`                                   | `autoware_sentinel_linux`                              |
+| Crate type        | `staticlib` (linked into Zephyr)            | `bin` (standalone executable)                          |
+| Entry point       | `extern "C" fn rust_main()`                 | `fn main()`                                            |
+| Logging           | `zephyr::set_logger()`                      | `env_logger::init()`                                   |
+| Clock             | `zephyr::sys::uptime_get()`                 | `std::time::Instant` + `OnceLock`                      |
+| Executor config   | `ExecutorConfig::new("tcp/192.0.2.2:7447")` | `ExecutorConfig::from_env().node_name("sentinel")`     |
+| Spin              | `executor.spin(10)` (no_std)                | `executor.spin_blocking(SpinOptions::default())` (std) |
+| nros features     | `["rmw-zenoh", "platform-zephyr"]`          | `["std", "rmw-zenoh", "platform-posix", "ros-humble"]` |
+| Zephyr dep        | `zephyr = "0.1.0"`                          | Removed; add `env_logger = "0.11"`                     |
+| `#![no_std]`      | Yes                                         | No (removed)                                           |
+| Heartbeat timeout | 500 ms                                      | 5000 ms (Autoware init is slow)                        |
 
 **Topic name mapping (subscriptions):**
 
-| Zephyr Topic | Linux Binary (Autoware-Compatible) | Message Type | Reason |
-|--------------|------------------------------------|--------------|--------|
-| `/control/command/control_cmd` | `/control/trajectory_follower/control_cmd` | `Control` | Subscribe to gate's input, not output |
-| `/heartbeat` | `/api/system/heartbeat` | `Heartbeat` | ADAPI heartbeat topic |
-| `/system/autoware_state` | `/autoware/state` | `AutowareState` | Compat node publishes here |
-| `/vehicle/status/velocity_status` | `/vehicle/status/velocity_status` | `VelocityReport` | Unchanged |
-| `/vehicle/status/gear_status` | `/vehicle/status/gear_status` | `GearReport` | Unchanged |
+| Zephyr Topic                      | Linux Binary (Autoware-Compatible)         | Message Type     | Reason                                |
+|-----------------------------------|--------------------------------------------|------------------|---------------------------------------|
+| `/control/command/control_cmd`    | `/control/trajectory_follower/control_cmd` | `Control`        | Subscribe to gate's input, not output |
+| `/heartbeat`                      | `/api/system/heartbeat`                    | `Heartbeat`      | ADAPI heartbeat topic                 |
+| `/system/autoware_state`          | `/autoware/state`                          | `AutowareState`  | Compat node publishes here            |
+| `/vehicle/status/velocity_status` | `/vehicle/status/velocity_status`          | `VelocityReport` | Unchanged                             |
+| `/vehicle/status/gear_status`     | `/vehicle/status/gear_status`              | `GearReport`     | Unchanged                             |
 
 **Topic name mapping (publications):**
 
-| Zephyr Topic | Linux Binary (Autoware-Compatible) | Message Type | Consumer |
-|--------------|------------------------------------|--------------|----------|
-| `/output/vehicle/control_cmd` | `/control/command/control_cmd` | `Control` | simple_planning_simulator |
-| `/output/vehicle/gear_cmd` | `/control/command/gear_cmd` | `GearCommand` | simple_planning_simulator |
+| Zephyr Topic                      | Linux Binary (Autoware-Compatible)     | Message Type            | Consumer                  |
+|-----------------------------------|----------------------------------------|-------------------------|---------------------------|
+| `/output/vehicle/control_cmd`     | `/control/command/control_cmd`         | `Control`               | simple_planning_simulator |
+| `/output/vehicle/gear_cmd`        | `/control/command/gear_cmd`            | `GearCommand`           | simple_planning_simulator |
 | `/output/vehicle/turn_indicators` | `/control/command/turn_indicators_cmd` | `TurnIndicatorsCommand` | simple_planning_simulator |
-| `/output/vehicle/hazard_lights` | `/control/command/hazard_lights_cmd` | `HazardLightsCommand` | simple_planning_simulator |
-| `/output/mrm/state` | `/system/fail_safe/mrm_state` | `MrmState` | System nodes |
+| `/output/vehicle/hazard_lights`   | `/control/command/hazard_lights_cmd`   | `HazardLightsCommand`   | simple_planning_simulator |
+| `/output/mrm/state`               | `/system/fail_safe/mrm_state`          | `MrmState`              | System nodes              |
 
 **Additional publishers (engagement flow):**
 
-| Topic | Message Type | Rate | Purpose |
-|-------|-------------|------|---------|
+| Topic                       | Message Type         | Rate  | Purpose                                                                            |
+|-----------------------------|----------------------|-------|------------------------------------------------------------------------------------|
 | `/api/operation_mode/state` | `OperationModeState` | 30 Hz | Reports `mode=AUTONOMOUS`, `is_autoware_control_enabled=true`, all modes available |
 
 **Additional services (engagement flow):**
 
-| Service Topic | Type | Behavior |
-|---------------|------|----------|
+| Service Topic                              | Type                  | Behavior               |
+|--------------------------------------------|-----------------------|------------------------|
 | `/api/operation_mode/change_to_autonomous` | `ChangeOperationMode` | Always returns success |
 
 **New files:**
@@ -119,12 +119,12 @@ changes.
 
 **Acceptance criteria:**
 
-- [ ] `cd src/autoware_sentinel_linux && just build` succeeds
-- [ ] `just run-sentinel-linux` starts and prints log output (exits cleanly when no zenohd)
-- [ ] Binary reuses all 11 algorithm crates from Phases 1–4
-- [ ] `OperationModeState` published at 30 Hz with `mode=AUTONOMOUS`
-- [ ] `ChangeOperationMode` service returns success
-- [ ] Topic names match Autoware conventions per mapping tables above
+- [x] `cd src/autoware_sentinel_linux && just build` succeeds
+- [x] `just run-sentinel-linux` starts and prints log output (exits cleanly when no zenohd)
+- [x] Binary reuses all 11 algorithm crates from Phases 1–4
+- [x] `OperationModeState` published at 30 Hz with `mode=AUTONOMOUS`
+- [x] `ChangeOperationMode` service returns success
+- [x] Topic names match Autoware conventions per mapping tables above
 
 ### 7.2 — Transport smoke test
 
@@ -299,11 +299,11 @@ the Linux adaptation.
 
 **TAP network topology:**
 
-| Interface | IP Address | Role |
-|-----------|------------|------|
+| Interface          | IP Address   | Role                 |
+|--------------------|--------------|----------------------|
 | `zeth-br` (bridge) | 192.0.2.2/24 | Host (zenohd, ROS 2) |
-| `zeth0` (TAP) | — | Zephyr application |
-| Zephyr app | 192.0.2.1 | Safety island |
+| `zeth0` (TAP)      | —            | Zephyr application   |
+| Zephyr app         | 192.0.2.1    | Safety island        |
 
 **Setup:**
 ```bash
