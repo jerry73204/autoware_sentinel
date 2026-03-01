@@ -1,6 +1,6 @@
 # Phase 6: Zephyr Application
 
-**Status:** In progress (6.1–6.2 complete)
+**Status:** In progress (6.1–6.7 complete)
 **Depends on:** Phase 1–4 (algorithm crates), Phase 5 (verification)
 **Goal:** Compose all algorithm crates into a single Zephyr application that runs on a
 Cortex-M safety MCU, wiring pub/sub callbacks via the nros `Executor` to form a complete
@@ -124,9 +124,9 @@ module, and nano-ros as a Zephyr module.
   and running on `native_sim`
 
 **Acceptance criteria:**
-- [ ] `source ../autoware-sentinel-workspace/env.sh` succeeds
-- [ ] `west build -b native_sim/native/64 ...` configures without errors
-- [ ] Zephyr SDK, west, and zephyr-lang-rust are all functional
+- [x] `source ../autoware-sentinel-workspace/env.sh` succeeds
+- [x] `west build -b native_sim/native/64 ...` configures without errors
+- [x] Zephyr SDK, west, and zephyr-lang-rust are all functional
 
 ### 6.2 — Application crate skeleton
 
@@ -229,13 +229,13 @@ extern "C" fn rust_main() {
 ```
 
 **Acceptance criteria:**
-- [ ] `west build -b native_sim/native/64 src/autoware_sentinel` succeeds
-- [ ] `west build -b native_sim/native/64 src/autoware_sentinel -t run` boots and exits cleanly
-- [ ] Binary is `#![no_std]` — no libstd symbols in the final ELF
+- [x] `west build -b native_sim/native/64 src/autoware_sentinel` succeeds
+- [x] `west build -b native_sim/native/64 src/autoware_sentinel -t run` boots and exits cleanly
+- [x] Binary is `#![no_std]` — no libstd symbols in the final ELF
 
 ### 6.3 — Wire sensing / input layer
 
-- [ ] Subscriptions and algorithm instances
+- [x] Subscriptions and algorithm instances
 - [ ] Integration tests on `native_sim`
 
 Wire the three input-processing algorithms that convert raw vehicle data into filtered
@@ -262,13 +262,13 @@ executor.add_subscription::<VelocityReport, _>("/vehicle/status/velocity_status"
 ```
 
 **Acceptance criteria:**
-- [ ] All three algorithms instantiated and receiving data in the executor
-- [ ] Filtered velocity available to MRM chain and command gate
-- [ ] Acceleration estimate available to MRM operators
+- [x] All three algorithms instantiated and receiving data in the executor
+- [x] Filtered velocity available to MRM chain and command gate
+- [x] Acceleration estimate available to MRM operators
 
 ### 6.4 — Wire MRM chain
 
-- [ ] Heartbeat watchdog + MRM handler + stop operators
+- [x] Heartbeat watchdog + MRM handler + stop operators
 - [ ] Service servers for MRM operate commands
 - [ ] Integration tests on `native_sim`
 
@@ -299,15 +299,15 @@ HeartbeatWatchdog
 ```
 
 **Acceptance criteria:**
-- [ ] Heartbeat timeout triggers MRM within one control period (33 ms)
-- [ ] MRM handler escalates from comfortable stop to emergency stop
-- [ ] Emergency stop operator converges velocity to zero
-- [ ] MRM state and hazard lights published on correct topics
+- [x] Heartbeat timeout triggers MRM within one control period (33 ms)
+- [x] MRM handler escalates from comfortable stop to emergency stop
+- [x] Emergency stop operator converges velocity to zero
+- [x] MRM state and hazard lights published on correct topics
 
 ### 6.5 — Wire command output layer
 
-- [ ] Vehicle command gate + shift decider
-- [ ] Source arbitration (autonomous / emergency)
+- [x] Vehicle command gate + shift decider
+- [x] Source arbitration (autonomous / emergency)
 - [ ] Integration tests on `native_sim`
 
 Wire the command gating and gear selection that form the final output stage.
@@ -340,14 +340,14 @@ executor.add_timer(33, move || {
 ```
 
 **Acceptance criteria:**
-- [ ] Autonomous commands pass through gate with rate limiting applied
-- [ ] Emergency source preempts autonomous source
-- [ ] Gear commands published correctly based on vehicle state
-- [ ] All output topics populated at 30 Hz
+- [x] Autonomous commands pass through gate with rate limiting applied
+- [x] Emergency source preempts autonomous source
+- [x] Gear commands published correctly based on vehicle state
+- [x] All output topics populated at 30 Hz
 
 ### 6.6 — Wire validation layer
 
-- [ ] Control validator + operation mode transition manager
+- [x] Control validator + operation mode transition manager
 - [ ] Diagnostic output
 - [ ] Integration tests on `native_sim`
 
@@ -374,15 +374,15 @@ OpModeTransitionMgr.update(dt)
 ```
 
 **Acceptance criteria:**
-- [ ] Control validator detects unsafe commands (overspeed, excessive jerk)
-- [ ] Validation failure triggers MRM after threshold consecutive violations
-- [ ] Operation mode transitions respect vehicle state constraints
+- [x] Control validator detects unsafe commands (overspeed, excessive jerk)
+- [x] Validation failure triggers MRM after threshold consecutive violations
+- [x] Operation mode transitions respect vehicle state constraints
 - [ ] Diagnostic status published for external monitoring
 
 ### 6.7 — Shared state and intra-node data flow
 
-- [ ] Zero-copy shared state between callbacks
-- [ ] Correct data ordering (sense → validate → gate → publish)
+- [x] Zero-copy shared state between callbacks
+- [x] Correct data ordering (sense → validate → gate → publish)
 
 The Zephyr application must share mutable state between callbacks without dynamic allocation.
 Since the nros `Executor` is single-threaded, no synchronization primitives are needed —
@@ -423,9 +423,9 @@ Callbacks hold `&mut SafetyIsland` references and execute in deterministic order
 each spin iteration, ensuring consistent data flow: sense → validate → gate → publish.
 
 **Acceptance criteria:**
-- [ ] No dynamic allocation (`#[global_allocator]` not used in application code)
-- [ ] Data flows in correct order within each control period
-- [ ] All internal state accessible without `Arc`, `Mutex`, or heap allocation
+- [x] No dynamic allocation (`#[global_allocator]` not used in application code)
+- [x] Data flows in correct order within each control period
+- [x] All internal state accessible without `Arc`, `Mutex`, or heap allocation
 - [ ] Binary compiles for `thumbv7em-none-eabihf` (Cortex-M7)
 
 ### 6.8 — Board support and hardware deployment
