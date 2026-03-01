@@ -1,0 +1,32 @@
+# Autoware Sentinel — Integration Tests
+#
+# Test infrastructure for transport smoke tests and Autoware interop.
+# Uses nextest for parallel execution with test group serialization.
+#
+# Run: cargo nextest run -p sentinel-tests
+
+[package]
+name = "sentinel-tests"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Integration tests for Autoware Sentinel"
+
+[dependencies]
+# Test framework
+rstest = "0.24"
+thiserror = "2.0"
+once_cell = "1.20"
+
+# Non-blocking I/O for process output capture
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[lib]
+name = "sentinel_tests"
+path = "src/lib.rs"
+
+# Integration tests
+[[test]]
+name = "transport_smoke"
+path = "tests/transport_smoke.rs"

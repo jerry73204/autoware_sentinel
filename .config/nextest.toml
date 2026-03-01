@@ -1,0 +1,26 @@
+# nextest configuration for Autoware Sentinel
+# See: https://nexte.st/book/configuration.html
+
+[profile.default]
+# Mark tests as slow after 30 seconds, terminate after 60 seconds
+slow-timeout = { period = "30s", terminate-after = 2 }
+fail-fast = false
+
+[profile.default.junit]
+path = "junit.xml"
+store-success-output = false
+store-failure-output = true
+
+# Transport smoke tests: heavyweight (zenohd + sentinel + ROS 2 CLI),
+# run sequentially to avoid port/resource contention.
+[test-groups.transport-smoke]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(transport_smoke)"
+test-group = "transport-smoke"
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+[profile.ci]
+slow-timeout = { period = "30s", terminate-after = 2 }
+fail-fast = true

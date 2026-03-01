@@ -128,8 +128,8 @@ changes.
 
 ### 7.2 — Transport smoke test
 
-- [ ] Bidirectional message flow verified (nros ↔ ROS 2 via shared zenohd)
-- [ ] CDR encoding compatible between rmw_zenoh_cpp and nros
+- [x] Bidirectional message flow verified (nros ↔ ROS 2 via shared zenohd)
+- [x] CDR encoding compatible between rmw_zenoh_cpp and nros
 
 Verify that the sentinel Linux binary and ROS 2 nodes can exchange messages through a shared
 Zenoh router. Both sides connect as Zenoh clients — no DDS bridge needed.
@@ -182,10 +182,10 @@ zenohd 1.7.2 may have protocol incompatibilities.
 
 **Acceptance criteria:**
 
-- [ ] Sentinel receives `VelocityReport` published from `ros2 topic pub`
-- [ ] `ros2 topic echo` receives `Control` messages published by sentinel
-- [ ] No deserialization errors in sentinel logs
-- [ ] No deserialization errors in ROS 2 terminal
+- [x] Sentinel receives `VelocityReport` published from `ros2 topic pub`
+- [x] `ros2 topic echo` receives `Control` messages published by sentinel
+- [x] No deserialization errors in sentinel logs
+- [x] No deserialization errors in ROS 2 terminal
 - [ ] Message round-trip latency < 10 ms on localhost
 
 ### 7.3 — Autoware planning simulator integration
@@ -340,8 +340,8 @@ be updated with configurable topic names.
 - [ ] Linux sentinel binary builds and runs against Autoware planning simulator
 - [ ] All 7 replaced system/control nodes successfully supplanted
 - [ ] Vehicle completes autonomous driving mission with sentinel in the loop
-- [ ] Transport compatibility proven (nros zenoh-pico ↔ rmw_zenoh_cpp ↔ zenohd)
-- [ ] Engagement flow works (OperationModeState + ChangeOperationMode)
+- [x] Transport compatibility proven (nros zenoh-pico ↔ rmw_zenoh_cpp ↔ zenohd)
+- [x] Engagement flow works (OperationModeState + ChangeOperationMode)
 - [ ] Integration test script automates the full test sequence
 - [ ] `just ci` still passes (no regressions in algorithm crate tests)
 

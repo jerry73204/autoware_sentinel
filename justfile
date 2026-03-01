@@ -43,9 +43,17 @@ build-sentinel-linux:
 run-sentinel-linux:
     cd src/autoware_sentinel_linux && RUST_LOG=info cargo run
 
-# Test all packages
+# Test all packages (unit tests)
 test:
     for pkg in {{ packages }}; do echo "=== $pkg ===" && (cd "src/$pkg" && cargo test); done
+
+# Run integration tests with nextest
+test-integration:
+    cd tests && cargo nextest run
+
+# Run integration tests (transport smoke only)
+test-transport:
+    cd tests && cargo nextest run -E 'binary(transport_smoke)'
 
 # Format all packages
 format:
