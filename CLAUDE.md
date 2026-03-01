@@ -36,7 +36,7 @@ autoware-nano-ros/
 │   ├── verification/                # Phase 5 — Verus formal proofs
 │   └── autoware_sentinel/           # Phase 6 — Zephyr application (TBD)
 ├── docs/
-│   ├── roadmap/                     # Phase docs (1–6)
+│   ├── roadmap/                     # Phase docs (1–7)
 │   ├── guides/                      # Developer guides
 │   │   └── zephyr-setup.md         # Zephyr workspace setup guide
 │   └── research/                    # Architecture research
@@ -266,8 +266,10 @@ linear.x.abs() < self.vx_threshold
 | 4 | Validation Layer (control validator, twist2accel) | Complete |
 | 5 | Formal Verification (Kani + Verus) | Complete |
 | 6 | Zephyr Application (single binary) | In progress |
+| 7 | Integration Testing (Autoware planning simulator) | Not started |
 
-See `docs/roadmap/` for detailed phase docs.
+See `docs/roadmap/` for detailed phase docs. Roadmap docs use `- [ ]` / `- [x]` checkboxes
+on subphase headers and acceptance criteria to track completion progress.
 
 ## Temporary Scripts
 
