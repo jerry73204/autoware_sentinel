@@ -64,7 +64,8 @@ just test            # cargo test
 Root justfile for convenience:
 
 ```bash
-just build             # build all packages
+just build             # build all packages + Zephyr application
+just build-zephyr      # build Zephyr application only (native_sim)
 just test              # test all packages
 just cross-check       # cargo check --target thumbv7em-none-eabihf in each
 just generate-bindings # regenerate messages in all packages

@@ -101,7 +101,7 @@ Transport: Zenoh over Ethernet (`tcp/<router-ip>:7447`), configured via Kconfig.
 ### 6.1 — Zephyr workspace setup
 
 - [x] Setup scripts and documentation
-- [ ] Build verification on `native_sim`
+- [x] Build verification on `native_sim`
 
 Create the Zephyr west workspace that brings together Zephyr RTOS, the zephyr-lang-rust
 module, and nano-ros as a Zephyr module.
@@ -131,7 +131,7 @@ module, and nano-ros as a Zephyr module.
 ### 6.2 — Application crate skeleton
 
 - [x] CMake + Cargo.toml + prj.conf
-- [ ] Empty `rust_main` builds and boots on `native_sim`
+- [x] Empty `rust_main` builds and boots on `native_sim`
 
 Create the Zephyr application crate that will host all algorithm instances.
 
