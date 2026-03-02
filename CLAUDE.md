@@ -292,6 +292,7 @@ linear.x.abs() < self.vx_threshold
 | 5 | Formal Verification (Kani + Verus) | Complete |
 | 6 | Zephyr Application (single binary) | In progress |
 | 7 | Integration Testing (Autoware planning simulator) | In progress (7.1–7.3 complete) |
+| 8 | Topic Parity (match baseline Autoware topics) | Not started |
 
 See `docs/roadmap/` for detailed phase docs. Roadmap docs use `- [ ]` / `- [x]` checkboxes
 on subphase headers and acceptance criteria to track completion progress.
