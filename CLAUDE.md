@@ -85,6 +85,7 @@ just build-sentinel-linux # build Linux sentinel binary
 just test               # test all packages (unit tests)
 just test-integration   # run integration tests with nextest
 just test-transport     # run transport smoke tests only
+just test-planning      # run planning simulator tests only
 just cross-check        # cargo check --target thumbv7em-none-eabihf in each
 just generate-bindings  # regenerate messages in all packages
 just format             # cargo fmt on all packages
@@ -324,6 +325,7 @@ Linux binary and ROS 2 (`rmw_zenoh_cpp`) through a shared zenohd router.
 ```bash
 just test-integration   # all integration tests
 just test-transport     # transport smoke tests only
+just test-planning      # planning simulator tests only
 cd tests && cargo nextest run -E 'test(test_sentinel_starts)'  # single test
 ```
 
@@ -343,11 +345,17 @@ cd tests && cargo nextest run -E 'test(test_sentinel_starts)'  # single test
 Transport smoke tests run sequentially (`max-threads = 1`) to avoid port/resource contention.
 Slow timeout is 60s (these tests involve multi-process coordination with sleep waits).
 
+Planning simulator tests also run sequentially (`max-threads = 1`) with 120s slow timeout
+(Autoware startup is ~60–120s). Tests skip gracefully if prerequisites are missing.
+
 ### Prerequisites
 
 - zenohd built locally (`~/repos/nano-ros/build/zenohd/zenohd`)
 - ROS 2 Humble with `rmw_zenoh_cpp` installed
 - Autoware message packages (`/opt/autoware/1.5.0/`)
+- Planning simulator tests additionally require:
+  - `play_launch` installed (`~/.local/bin/play_launch`, v0.6.0+)
+  - Autoware map data at `$MAP_PATH` or `$HOME/autoware_map/sample-map-planning`
 
 ### Adding new integration tests
 

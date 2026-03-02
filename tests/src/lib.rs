@@ -8,6 +8,7 @@
 //! - Ephemeral port allocation for parallel-safe zenohd instances
 //! - Non-blocking I/O with poll(2) for output capture
 
+pub mod autoware;
 pub mod fixtures;
 pub mod process;
 pub mod ros2;

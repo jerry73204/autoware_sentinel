@@ -190,81 +190,92 @@ zenohd 1.7.2 may have protocol incompatibilities.
 
 ### 7.3 — Autoware planning simulator integration
 
-- [ ] Autoware launches with `rmw_zenoh_cpp`
-- [ ] Replaced nodes disabled
-- [ ] Sentinel drives simulated vehicle through autonomous mission
-- [ ] Integration test script created
+- [ ] Baseline test passes (unmodified Autoware drives autonomously)
+- [ ] Sentinel replacement test passes (filtered Autoware + sentinel drives autonomously)
+- [ ] Tests integrated into nextest (`just test-planning`)
 
-Full end-to-end test: launch the Autoware planning simulator, disable the 7 replaced nodes,
-start the sentinel, and run an autonomous driving mission.
+Full end-to-end test using the existing nextest infrastructure: dump the Autoware planning
+simulator launch via `play_launch`, filter out the 7 replaced nodes from the record, replay
+the filtered record, start the sentinel, and run an autonomous driving mission. Uses
+Approach A exclusively (`play_launch dump` → filter → `play_launch replay`).
 
-**Test procedure:**
+#### 7.3a — Baseline: Standard Autoware (no sentinel)
 
-1. Start zenohd:
-   ```bash
-   ~/repos/nano-ros/build/zenohd/zenohd --listen tcp/0.0.0.0:7447
-   ```
+Run unmodified Autoware through the full autonomous drive sequence to establish baseline
+behavior and validate the test infrastructure itself (play_launch, ROS 2 helpers, map data).
 
-2. Launch Autoware with `rmw_zenoh_cpp`:
-   ```bash
-   export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-   export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:7447"]'
-   ros2 launch autoware_launch planning_simulator.launch.xml \
-     map_path:=/path/to/map vehicle_model:=sample_vehicle sensor_model:=sample_sensor_kit
-   ```
+**Work items:**
 
-3. Disable replaced nodes (choose one approach):
+- [ ] `AutowareLauncher` fixture — wraps `play_launch` dump/replay lifecycle as ManagedProcess
+  - `dump()` — runs `play_launch dump launch autoware_launch planning_simulator.launch.xml`
+    with `map_path`, caches result (`OnceCell`)
+  - `filter_record()` — loads record.json, removes specified nodes by array/name, writes
+    filtered copy
+  - `replay()` — runs `play_launch replay --input-file ... --disable-all` as ManagedProcess
+- [ ] `Ros2Command` helpers — extend `tests/src/ros2.rs` for:
+  - `topic_pub_once()` — publish a single message (initial pose)
+  - `service_call()` — call a ROS 2 service and capture response
+  - `check_topic_active()` — verify a topic has publishers
+  - `wait_for_topics()` — poll until critical topics are active
+- [ ] `autoware_map_path()` helper — `$MAP_PATH` or `$HOME/autoware_map/sample-map-planning`
+- [ ] `require_autoware_map()` — skip test if map data not available
+- [ ] `require_play_launch()` — skip test if `play_launch` not installed
+- [ ] Pose configuration — hardcoded constants for sample-map-planning:
+  - Initial: position (3752.34, 73736.09, 19.34), orientation q(-0.0008, -0.0002, -0.9584, 0.2854)
+  - Goal: position (3758.96, 73689.29, 19.63), orientation q(0, 0, 0.9663, -0.2576)
+- [ ] Baseline test: `test_autoware_baseline_autonomous_drive`
+  - Dump + replay full (unfiltered) Autoware via `play_launch`
+  - Run autonomous drive sequence (initial pose → wait for localization → set route → engage)
+  - Verify: vehicle moves (kinematic_state position delta > 1m)
+  - Verify: operation mode reaches AUTONOMOUS
+  - Verify: no unexpected node crashes (play_launch process stays alive)
 
-   **Approach A (recommended) — Edit launch record before replay:**
-   ```bash
-   play_launch dump launch autoware_launch planning_simulator.launch.xml \
-     map_path:=/path/to/map --output full_record.json
+**Autonomous drive sequence** (from play_launch test scripts, pre-validated with
+sample-map-planning):
 
-   jq '
-     .node |= [.[] | select(.name != "mrm_handler")] |
-     .container |= [.[] | select(
-       .name != "mrm_emergency_stop_operator_container" and
-       .name != "mrm_comfortable_stop_operator_container")]
-   ' full_record.json > filtered_record.json
+1. Wait for readiness topics: `/map/vector_map`, `/api/operation_mode/state`,
+   `/api/routing/state`
+2. Publish initial pose to `/initialpose` (`PoseWithCovarianceStamped`)
+3. Wait 5s for localization
+4. Wait for `/tf`, `/localization/kinematic_state`
+5. Set route via `/api/routing/set_route_points` service call
+6. Wait 3s
+7. Engage via `/api/operation_mode/change_to_autonomous` service call
+8. Monitor `/localization/kinematic_state` for movement (position delta > 1m)
 
-   play_launch replay --input-file filtered_record.json
-   ```
+#### 7.3b — Sentinel replaces 7 nodes
 
-   **Approach B — Stop nodes post-launch via Web API:**
-   ```bash
-   curl -X POST http://127.0.0.1:8080/api/nodes/mrm_handler/stop
-   curl -X POST http://127.0.0.1:8080/api/nodes/vehicle_cmd_gate/stop
-   # ... repeat for all 7 nodes
-   ```
+Run Autoware with 7 nodes filtered out from the play_launch record, plus the sentinel Linux
+binary providing those functions.
 
-   **Approach C — Lifecycle shutdown:**
-   ```bash
-   ros2 lifecycle set /system/mrm_handler shutdown
-   # ... for lifecycle-managed nodes
-   ```
+**Node filtering from record.json:**
 
-4. Start sentinel:
-   ```bash
-   just run-sentinel-linux
-   ```
+The 7 replaced nodes live in 3 different record.json arrays:
 
-5. Run autonomous drive test:
-   - Set initial pose in RViz (or programmatically)
-   - Set goal destination
-   - Engage autonomous mode
-   - Observe vehicle following planned trajectory
+| Array         | Name                                         | Package                                      | Notes                                                               |
+|---------------|----------------------------------------------|----------------------------------------------|---------------------------------------------------------------------|
+| `node[]`      | `mrm_handler`                                | `autoware_mrm_handler`                       | Standalone node                                                     |
+| `container[]` | `mrm_emergency_stop_operator_container`      | `autoware_mrm_emergency_stop_operator`       | Remove entire container + its load_nodes                            |
+| `container[]` | `mrm_comfortable_stop_operator_container`    | `autoware_mrm_comfortable_stop_operator`     | Remove entire container + its load_nodes                            |
+| `load_node[]` | `vehicle_cmd_gate`                           | `autoware_vehicle_cmd_gate`                  | In `/control/control_container` — remove node, keep container       |
+| `load_node[]` | `autoware_shift_decider`                     | `autoware_shift_decider`                     | In `/control/control_container` — remove node, keep container       |
+| `load_node[]` | `autoware_operation_mode_transition_manager` | `autoware_operation_mode_transition_manager` | In `/control/control_container` — remove node, keep container       |
+| `load_node[]` | `control_validator`                          | `autoware_control_validator`                 | In `/control/control_check_container` — remove node, keep container |
 
-**Integration test script (`scripts/integration_test.sh`):**
+**Work items:**
 
-Automates the above procedure with process management and cleanup:
-- Starts zenohd, Autoware, and sentinel as background processes
-- Waits for initialization (node discovery or timeout)
-- Disables replaced nodes
-- Runs autonomous driving sequence
-- Traps signals for cleanup (kills background processes on exit)
-- Reports pass/fail based on observable criteria
-
-Reference: `~/repos/play_launch/tests/fixtures/autoware/scripts/test_autonomous_drive.py`
+- [ ] Record filter function — removes 7 nodes from record.json using `serde_json`:
+  - From `node[]`: filter by `name == "mrm_handler"`
+  - From `container[]`: filter by `name` matching the two MRM operator containers
+  - From `load_node[]`: filter by `package` matching the 4 control nodes
+- [ ] Sentinel replacement test: `test_sentinel_replaces_autoware_nodes`
+  - Dump Autoware record, filter 7 nodes, replay filtered record via `play_launch`
+  - Start zenohd (ephemeral port) + sentinel connected to same zenohd
+  - Run autonomous drive sequence (same as baseline)
+  - Verify: sentinel publishes Control at 30 Hz (echo `/control/command/control_cmd`)
+  - Verify: vehicle moves (kinematic_state position delta > 1m)
+  - Verify: sentinel engagement flow works (OperationModeState published, engage succeeds)
+  - Verify: no MRM triggered (sentinel stays in NORMAL state)
 
 **Key interactions with the planning simulator:**
 
@@ -277,15 +288,50 @@ The `simple_planning_simulator` node (`/simulation/autoware_simple_planning_simu
 This creates a closed loop: sentinel publishes commands → simulator updates vehicle state →
 sentinel receives updated velocity → sentinel gates next command.
 
+#### nextest configuration
+
+New test group `planning-simulator` with `max-threads = 1` (Autoware is resource-heavy,
+run tests sequentially). Slow timeout: `period = "120s", terminate-after = 2` (Autoware
+startup is ~60–120s). New test binary `planning_simulator` registered in `tests/Cargo.toml`.
+
+#### New files
+
+| File                                      | Purpose                                                     |
+|-------------------------------------------|-------------------------------------------------------------|
+| `tests/src/fixtures/autoware_launcher.rs` | `AutowareLauncher` fixture (dump, filter, replay)           |
+| `tests/src/autoware.rs`                   | Autoware-specific helpers (map path, poses, drive sequence) |
+| `tests/tests/planning_simulator.rs`       | 7.3 integration tests (baseline + sentinel)                 |
+
+#### Modified files
+
+| File                        | Change                                                                                |
+|-----------------------------|---------------------------------------------------------------------------------------|
+| `tests/Cargo.toml`          | Add `serde_json` dep, register `planning_simulator` test binary                       |
+| `tests/src/lib.rs`          | Add `pub mod autoware;`                                                               |
+| `tests/src/ros2.rs`         | Add `topic_pub_once()`, `service_call()`, `check_topic_active()`, `wait_for_topics()` |
+| `tests/src/fixtures/mod.rs` | Add `mod autoware_launcher; pub use autoware_launcher::*;`                            |
+| `.config/nextest.toml`      | Add `planning-simulator` test group                                                   |
+| Root `justfile`             | Add `test-planning` recipe                                                            |
+
+#### Prerequisites
+
+- `play_launch` installed (`~/.local/bin/play_launch`, v0.6.0+)
+- Autoware map data at `$MAP_PATH` or `$HOME/autoware_map/sample-map-planning`
+- zenohd built locally (`~/repos/nano-ros/build/zenohd/zenohd`)
+- ROS 2 Humble with `rmw_zenoh_cpp` installed
+- Autoware message packages (`/opt/autoware/1.5.0/`)
+
 **Acceptance criteria:**
 
-- [ ] Autoware planning simulator launches successfully with `rmw_zenoh_cpp`
-- [ ] All 7 replaced nodes successfully disabled without affecting other nodes
-- [ ] Sentinel receives `VelocityReport` at simulator's publish rate
-- [ ] Sentinel publishes `Control` at 30 Hz
-- [ ] Planning simulator vehicle follows the planned trajectory
-- [ ] No MRM triggered during normal operation (heartbeat healthy)
-- [ ] `scripts/integration_test.sh` automates the full test sequence
+- [ ] Baseline test passes: unmodified Autoware drives autonomously
+- [ ] Sentinel test passes: filtered Autoware + sentinel drives autonomously
+- [ ] All 7 replaced nodes correctly identified and filtered from record.json
+- [ ] Vehicle position changes during autonomous drive (kinematic_state delta > 1m)
+- [ ] Sentinel publishes Control messages at expected rate
+- [ ] No orphan processes after test completion
+- [ ] Tests skip gracefully when prerequisites missing (map, play_launch, ROS 2)
+- [ ] `just test-planning` runs planning simulator tests
+- [ ] `just test-integration` runs all tests including planning simulator
 - [ ] Test completes within 5 minutes (including Autoware startup)
 
 ### 7.4 — Zephyr native_sim integration (optional/stretch)
@@ -342,7 +388,7 @@ be updated with configurable topic names.
 - [ ] Vehicle completes autonomous driving mission with sentinel in the loop
 - [x] Transport compatibility proven (nros zenoh-pico ↔ rmw_zenoh_cpp ↔ zenohd)
 - [x] Engagement flow works (OperationModeState + ChangeOperationMode)
-- [ ] Integration test script automates the full test sequence
+- [ ] Planning simulator tests pass (`just test-planning`)
 - [ ] `just ci` still passes (no regressions in algorithm crate tests)
 
 ## References

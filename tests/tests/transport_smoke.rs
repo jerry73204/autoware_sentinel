@@ -15,8 +15,7 @@
 
 use sentinel_tests::count_pattern;
 use sentinel_tests::fixtures::{
-    Ros2Process, ZenohRouter, require_ros2_autoware, sentinel_binary, start_sentinel,
-    zenohd_unique,
+    Ros2Process, ZenohRouter, require_ros2_autoware, sentinel_binary, start_sentinel, zenohd_unique,
 };
 
 use rstest::rstest;
@@ -31,7 +30,10 @@ use std::time::Duration;
 fn test_zenohd_available() {
     let available = sentinel_tests::process::is_zenohd_available();
     eprintln!("zenohd available: {}", available);
-    assert!(available, "zenohd binary not found — build with `just build-zenohd` in nano-ros");
+    assert!(
+        available,
+        "zenohd binary not found — build with `just build-zenohd` in nano-ros"
+    );
 }
 
 #[test]
@@ -60,8 +62,7 @@ fn test_autoware_msgs_detection() {
 #[rstest]
 fn test_sentinel_starts(zenohd_unique: ZenohRouter, sentinel_binary: PathBuf) {
     let locator = zenohd_unique.locator();
-    let _sentinel = start_sentinel(&sentinel_binary, &locator)
-        .expect("Sentinel failed to start");
+    let _sentinel = start_sentinel(&sentinel_binary, &locator).expect("Sentinel failed to start");
     // start_sentinel already waits for "Executor ready"
     // ManagedProcess drop kills sentinel + zenohd drop kills router
 }
@@ -93,8 +94,7 @@ fn test_sentinel_to_ros2_control(zenohd_unique: ZenohRouter, sentinel_binary: Pa
 
     // Start sentinel
     eprintln!("Starting sentinel...");
-    let _sentinel = start_sentinel(&sentinel_binary, &locator)
-        .expect("Sentinel failed to start");
+    let _sentinel = start_sentinel(&sentinel_binary, &locator).expect("Sentinel failed to start");
 
     // Collect output for 5 seconds
     std::thread::sleep(Duration::from_secs(5));
@@ -102,7 +102,11 @@ fn test_sentinel_to_ros2_control(zenohd_unique: ZenohRouter, sentinel_binary: Pa
         .wait_for_all_output(Duration::from_secs(3))
         .unwrap_or_default();
 
-    eprintln!("ROS 2 echo output ({} bytes):\n{}", output.len(), &output[..output.len().min(500)]);
+    eprintln!(
+        "ROS 2 echo output ({} bytes):\n{}",
+        output.len(),
+        &output[..output.len().min(500)]
+    );
 
     // Sentinel publishes Control at 30 Hz; expect at least 1 message in 5s
     let msg_count = count_pattern(&output, "stamp:");
@@ -133,20 +137,26 @@ fn test_sentinel_publishes_operation_mode(zenohd_unique: ZenohRouter, sentinel_b
     std::thread::sleep(Duration::from_secs(3));
 
     eprintln!("Starting sentinel...");
-    let _sentinel = start_sentinel(&sentinel_binary, &locator)
-        .expect("Sentinel failed to start");
+    let _sentinel = start_sentinel(&sentinel_binary, &locator).expect("Sentinel failed to start");
 
     std::thread::sleep(Duration::from_secs(5));
     let output = ros2_echo
         .wait_for_all_output(Duration::from_secs(3))
         .unwrap_or_default();
 
-    eprintln!("OperationModeState output ({} bytes):\n{}", output.len(), &output[..output.len().min(500)]);
+    eprintln!(
+        "OperationModeState output ({} bytes):\n{}",
+        output.len(),
+        &output[..output.len().min(500)]
+    );
 
     // Check for mode=2 (AUTONOMOUS) in the output
     let has_mode = output.contains("mode: 2");
     let has_autoware_control = output.contains("is_autoware_control_enabled: true");
-    eprintln!("mode=AUTONOMOUS: {}, autoware_control_enabled: {}", has_mode, has_autoware_control);
+    eprintln!(
+        "mode=AUTONOMOUS: {}, autoware_control_enabled: {}",
+        has_mode, has_autoware_control
+    );
     assert!(
         has_mode,
         "OperationModeState not received or mode != AUTONOMOUS"
@@ -172,8 +182,7 @@ fn test_ros2_to_sentinel_velocity(zenohd_unique: ZenohRouter, sentinel_binary: P
 
     // Start sentinel first
     eprintln!("Starting sentinel...");
-    let _sentinel = start_sentinel(&sentinel_binary, &locator)
-        .expect("Sentinel failed to start");
+    let _sentinel = start_sentinel(&sentinel_binary, &locator).expect("Sentinel failed to start");
 
     // Publish VelocityReport from ROS 2
     eprintln!("Publishing VelocityReport from ROS 2...");
@@ -205,7 +214,10 @@ fn test_ros2_to_sentinel_velocity(zenohd_unique: ZenohRouter, sentinel_binary: P
 
     // Sentinel should still be publishing Control messages
     let msg_count = count_pattern(&output, "stamp:");
-    eprintln!("Control messages after VelocityReport injection: {}", msg_count);
+    eprintln!(
+        "Control messages after VelocityReport injection: {}",
+        msg_count
+    );
     assert!(
         msg_count > 0,
         "Sentinel stopped publishing after receiving VelocityReport"
@@ -228,8 +240,7 @@ fn test_bidirectional_round_trip(zenohd_unique: ZenohRouter, sentinel_binary: Pa
 
     // 1. Start sentinel
     eprintln!("Starting sentinel...");
-    let _sentinel = start_sentinel(&sentinel_binary, &locator)
-        .expect("Sentinel failed to start");
+    let _sentinel = start_sentinel(&sentinel_binary, &locator).expect("Sentinel failed to start");
 
     // 2. Start ROS 2 echo on sentinel output
     eprintln!("Starting ros2 topic echo...");

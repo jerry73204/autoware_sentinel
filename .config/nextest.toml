@@ -21,6 +21,16 @@ filter = "binary(transport_smoke)"
 test-group = "transport-smoke"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
+# Planning simulator tests: very heavyweight (Autoware + sentinel + ROS 2),
+# run sequentially with longer timeouts.
+[test-groups.planning-simulator]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(planning_simulator)"
+test-group = "planning-simulator"
+slow-timeout = { period = "120s", terminate-after = 2 }
+
 [profile.ci]
 slow-timeout = { period = "30s", terminate-after = 2 }
 fail-fast = true

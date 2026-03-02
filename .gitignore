@@ -16,6 +16,10 @@ __pycache__/
 # Temporary scripts and data
 /tmp/
 
+# play_launch artifacts
+record.json
+play_log/
+
 # Verus verification crate build output
 src/verification/target
 

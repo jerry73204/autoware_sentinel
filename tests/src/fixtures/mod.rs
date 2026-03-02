@@ -1,10 +1,12 @@
 //! Test fixtures for Autoware Sentinel integration tests
 
-mod zenohd_router;
+mod autoware_launcher;
 mod sentinel;
+mod zenohd_router;
 
-pub use zenohd_router::*;
+pub use autoware_launcher::*;
 pub use sentinel::*;
+pub use zenohd_router::*;
 
 // Re-export commonly used items for convenience
 pub use crate::process::ManagedProcess;

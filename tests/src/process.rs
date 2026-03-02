@@ -76,10 +76,7 @@ impl ManagedProcess {
     }
 
     /// Spawn a process from a pre-configured Command builder.
-    pub fn spawn_command(
-        mut command: Command,
-        name: impl Into<String>,
-    ) -> Result<Self, TestError> {
+    pub fn spawn_command(mut command: Command, name: impl Into<String>) -> Result<Self, TestError> {
         let name = name.into();
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
@@ -329,8 +326,7 @@ impl Drop for ManagedProcess {
 /// Get the path to the locally-built zenohd binary.
 pub fn zenohd_binary_path() -> std::path::PathBuf {
     // nano-ros repo is at ../../nano-ros relative to project root
-    project_root()
-        .join("../nano-ros/build/zenohd/zenohd")
+    project_root().join("../nano-ros/build/zenohd/zenohd")
 }
 
 /// Check if the locally-built zenohd is available.

@@ -55,6 +55,10 @@ test-integration:
 test-transport:
     cd tests && cargo nextest run -E 'binary(transport_smoke)'
 
+# Run planning simulator integration tests only
+test-planning:
+    cd tests && cargo nextest run -E 'binary(planning_simulator)'
+
 # Format all packages
 format:
     for pkg in {{ packages }}; do echo "=== $pkg ===" && (cd "src/$pkg" && cargo fmt); done

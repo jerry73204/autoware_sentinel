@@ -80,6 +80,17 @@ pub fn ros2_env_setup_with_locator(locator: &str) -> String {
     )
 }
 
+/// Get ROS 2 + Autoware environment setup command with default DDS transport.
+///
+/// Used for interacting with Autoware processes that use default CycloneDDS.
+pub fn ros2_env_setup_dds() -> String {
+    format!(
+        "source /opt/ros/{}/setup.bash && \
+         source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null",
+        DEFAULT_ROS_DISTRO,
+    )
+}
+
 /// Managed ROS 2 process with automatic cleanup.
 pub struct Ros2Process {
     handle: Child,
@@ -89,7 +100,7 @@ pub struct Ros2Process {
 
 impl Ros2Process {
     /// Spawn a bash command in its own process group.
-    fn spawn_bash(cmd: &str, name: impl Into<String>) -> TestResult<Self> {
+    pub(crate) fn spawn_bash(cmd: &str, name: impl Into<String>) -> TestResult<Self> {
         let name = name.into();
         let mut command = Command::new("bash");
         command
@@ -241,4 +252,135 @@ impl Drop for Ros2Process {
     fn drop(&mut self) {
         self.kill();
     }
+}
+
+// =============================================================================
+// One-shot ROS 2 command helpers (for planning simulator tests)
+// =============================================================================
+
+/// Publish a single message to a topic and exit.
+///
+/// Uses `ros2 topic pub --once` which publishes one message then exits.
+/// `env_setup` is the shell environment setup string (use `ros2_env_setup_with_locator`
+/// for zenoh or `ros2_env_setup_dds` for default DDS).
+pub fn topic_pub_once(
+    topic: &str,
+    msg_type: &str,
+    data: &str,
+    env_setup: &str,
+) -> TestResult<String> {
+    let cmd =
+        format!("{env_setup} && timeout 30 ros2 topic pub --once {topic} {msg_type} \"{data}\"");
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("topic_pub_once failed: {e}")))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+
+    if !output.status.success() {
+        return Err(TestError::ProcessFailed(format!(
+            "topic_pub_once to {topic} failed: {combined}"
+        )));
+    }
+    Ok(combined)
+}
+
+/// Call a ROS 2 service and return the response.
+///
+/// Uses `ros2 service call` with a timeout.
+/// `env_setup` is the shell environment setup string.
+pub fn service_call(
+    service: &str,
+    srv_type: &str,
+    request: &str,
+    env_setup: &str,
+) -> TestResult<String> {
+    let cmd =
+        format!("{env_setup} && timeout 30 ros2 service call {service} {srv_type} \"{request}\"");
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("service_call failed: {e}")))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let combined = format!("{stdout}{stderr}");
+
+    if !output.status.success() {
+        return Err(TestError::ProcessFailed(format!(
+            "service_call to {service} failed: {combined}"
+        )));
+    }
+    Ok(combined)
+}
+
+/// Check if a topic currently has publishers.
+///
+/// Uses `ros2 topic info` and checks the publisher count.
+/// `env_setup` is the shell environment setup string.
+pub fn check_topic_active(topic: &str, env_setup: &str) -> TestResult<bool> {
+    let cmd = format!("{env_setup} && timeout 10 ros2 topic info {topic}");
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("check_topic_active failed: {e}")))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // `ros2 topic info` outputs "Publisher count: N"
+    // Topic is active if publisher count > 0
+    Ok(stdout.contains("Publisher count: ") && !stdout.contains("Publisher count: 0"))
+}
+
+/// Wait until all specified topics have at least one publisher.
+///
+/// Polls `ros2 topic info` for each topic until all are active or timeout.
+/// `env_setup` is the shell environment setup string.
+pub fn wait_for_topics(
+    topics: &[&str],
+    env_setup: &str,
+    timeout: std::time::Duration,
+) -> TestResult<()> {
+    let start = std::time::Instant::now();
+
+    loop {
+        if start.elapsed() > timeout {
+            // Report which topics are still missing
+            let mut missing = Vec::new();
+            for topic in topics {
+                if !check_topic_active(topic, env_setup).unwrap_or(false) {
+                    missing.push(*topic);
+                }
+            }
+            return Err(TestError::ProcessFailed(format!(
+                "Timed out waiting for topics: {}",
+                missing.join(", ")
+            )));
+        }
+
+        let all_active = topics
+            .iter()
+            .all(|topic| check_topic_active(topic, env_setup).unwrap_or(false));
+
+        if all_active {
+            return Ok(());
+        }
+
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+}
+
+/// Start `ros2 topic echo` with default DDS transport (no zenoh).
+pub fn topic_echo_dds(topic: &str, msg_type: &str) -> TestResult<Ros2Process> {
+    let env_setup = ros2_env_setup_dds();
+    let cmd = format!("{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type}");
+    Ros2Process::spawn_bash(&cmd, format!("ros2 topic echo {topic} (DDS)"))
 }

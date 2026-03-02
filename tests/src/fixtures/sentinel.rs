@@ -3,7 +3,7 @@
 //! Builds the `autoware_sentinel_linux` binary once per test process
 //! using `OnceCell`, then provides it as an rstest fixture.
 
-use crate::process::{project_root, ManagedProcess};
+use crate::process::{ManagedProcess, project_root};
 use crate::{TestError, TestResult};
 use once_cell::sync::OnceCell;
 use std::path::{Path, PathBuf};
@@ -62,13 +62,9 @@ pub fn sentinel_binary() -> PathBuf {
 ///
 /// The process is automatically killed on drop. Returns after the
 /// sentinel prints its "Executor ready" message (or timeout).
-pub fn start_sentinel(
-    binary: &Path,
-    locator: &str,
-) -> TestResult<ManagedProcess> {
+pub fn start_sentinel(binary: &Path, locator: &str) -> TestResult<ManagedProcess> {
     let mut cmd = Command::new(binary);
-    cmd.env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", locator);
+    cmd.env("RUST_LOG", "info").env("ZENOH_LOCATOR", locator);
     let mut proc = ManagedProcess::spawn_command(cmd, "sentinel")?;
 
     // Wait for the sentinel to be ready
