@@ -61,8 +61,14 @@ path = "generated/shape_msgs"
 [patch.crates-io.std_msgs]
 path = "generated/std_msgs"
 
+[patch.crates-io.tier4_control_msgs]
+path = "generated/tier4_control_msgs"
+
 [patch.crates-io.tier4_system_msgs]
 path = "generated/tier4_system_msgs"
+
+[patch.crates-io.tier4_vehicle_msgs]
+path = "generated/tier4_vehicle_msgs"
 
 [patch.crates-io.unique_identifier_msgs]
 path = "generated/unique_identifier_msgs"

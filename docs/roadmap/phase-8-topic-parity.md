@@ -23,34 +23,34 @@ Both categories must be covered to achieve full behavioral parity with baseline 
 
 ### Sentinel currently publishes (6 topics)
 
-| Topic | Message Type | Source Node |
-|-------|-------------|-------------|
-| `/control/command/control_cmd` | `Control` | vehicle_cmd_gate |
-| `/control/command/gear_cmd` | `GearCommand` | shift_decider + vehicle_cmd_gate |
-| `/control/command/hazard_lights_cmd` | `HazardLightsCommand` | mrm_handler + vehicle_cmd_gate |
-| `/control/command/turn_indicators_cmd` | `TurnIndicatorsCommand` | mrm_handler + vehicle_cmd_gate |
-| `/system/fail_safe/mrm_state` | `MrmState` | mrm_handler |
-| `/api/operation_mode/state` | `OperationModeState` | operation_mode_transition_manager |
+| Topic                                  | Message Type            | Source Node                       |
+|----------------------------------------|-------------------------|-----------------------------------|
+| `/control/command/control_cmd`         | `Control`               | vehicle_cmd_gate                  |
+| `/control/command/gear_cmd`            | `GearCommand`           | shift_decider + vehicle_cmd_gate  |
+| `/control/command/hazard_lights_cmd`   | `HazardLightsCommand`   | mrm_handler + vehicle_cmd_gate    |
+| `/control/command/turn_indicators_cmd` | `TurnIndicatorsCommand` | mrm_handler + vehicle_cmd_gate    |
+| `/system/fail_safe/mrm_state`          | `MrmState`              | mrm_handler                       |
+| `/api/operation_mode/state`            | `OperationModeState`    | operation_mode_transition_manager |
 
 ### Missing functional topics (13)
 
 These are subscribed by other running Autoware nodes in the planning simulator.
 
-| # | Topic | Message Type | Original Node | Subscriber(s) |
-|---|-------|-------------|---------------|----------------|
-| 1 | `/api/autoware/get/engage` | `Engage` | vehicle_cmd_gate | simple_planning_simulator, external APIs |
-| 2 | `/autoware/engage` | `Engage` | operation_mode_transition_manager (compat) | legacy downstream nodes |
-| 3 | `/control/command/emergency_cmd` | `VehicleEmergencyStamped` | vehicle_cmd_gate | vehicle interface |
-| 4 | `/control/gate_mode_cmd` | `GateMode` | vehicle_cmd_gate | — (published for external tools) |
-| 5 | `/control/shift_decider/gear_cmd` | `GearCommand` | shift_decider | vehicle_cmd_gate (auto/external/emergency gear input) |
-| 6 | `/control/vehicle_cmd_gate/is_stopped` | `IsStopped` | vehicle_cmd_gate (ModerateStopInterface) | stop management |
-| 7 | `/control/vehicle_cmd_gate/operation_mode` | `OperationModeState` | vehicle_cmd_gate | operation_mode_transition_manager (gate feedback) |
-| 8 | `/system/emergency/gear_cmd` | `GearCommand` | mrm_handler | vehicle_cmd_gate (emergency gear) |
-| 9 | `/system/emergency/hazard_lights_cmd` | `HazardLightsCommand` | mrm_handler | vehicle_cmd_gate (emergency hazard) |
-| 10 | `/system/emergency/turn_indicators_cmd` | `TurnIndicatorsCommand` | mrm_handler | vehicle_cmd_gate (emergency turn) |
-| 11 | `/system/mrm/comfortable_stop/status` | `MrmBehaviorStatus` | mrm_comfortable_stop_operator | mrm_handler |
-| 12 | `/system/mrm/emergency_stop/status` | `MrmBehaviorStatus` | mrm_emergency_stop_operator | mrm_handler |
-| 13 | `/system/mrm/pull_over_manager/status` | `MrmBehaviorStatus` | mrm_pull_over_manager | mrm_handler |
+| #  | Topic                                      | Message Type              | Original Node                              | Subscriber(s)                                         |
+|----|--------------------------------------------|---------------------------|--------------------------------------------|-------------------------------------------------------|
+| 1  | `/api/autoware/get/engage`                 | `Engage`                  | vehicle_cmd_gate                           | simple_planning_simulator, external APIs              |
+| 2  | `/autoware/engage`                         | `Engage`                  | operation_mode_transition_manager (compat) | legacy downstream nodes                               |
+| 3  | `/control/command/emergency_cmd`           | `VehicleEmergencyStamped` | vehicle_cmd_gate                           | vehicle interface                                     |
+| 4  | `/control/gate_mode_cmd`                   | `GateMode`                | vehicle_cmd_gate                           | — (published for external tools)                      |
+| 5  | `/control/shift_decider/gear_cmd`          | `GearCommand`             | shift_decider                              | vehicle_cmd_gate (auto/external/emergency gear input) |
+| 6  | `/control/vehicle_cmd_gate/is_stopped`     | `IsStopped`               | vehicle_cmd_gate (ModerateStopInterface)   | stop management                                       |
+| 7  | `/control/vehicle_cmd_gate/operation_mode` | `OperationModeState`      | vehicle_cmd_gate                           | operation_mode_transition_manager (gate feedback)     |
+| 8  | `/system/emergency/gear_cmd`               | `GearCommand`             | mrm_handler                                | vehicle_cmd_gate (emergency gear)                     |
+| 9  | `/system/emergency/hazard_lights_cmd`      | `HazardLightsCommand`     | mrm_handler                                | vehicle_cmd_gate (emergency hazard)                   |
+| 10 | `/system/emergency/turn_indicators_cmd`    | `TurnIndicatorsCommand`   | mrm_handler                                | vehicle_cmd_gate (emergency turn)                     |
+| 11 | `/system/mrm/comfortable_stop/status`      | `MrmBehaviorStatus`       | mrm_comfortable_stop_operator              | mrm_handler                                           |
+| 12 | `/system/mrm/emergency_stop/status`        | `MrmBehaviorStatus`       | mrm_emergency_stop_operator                | mrm_handler                                           |
+| 13 | `/system/mrm/pull_over_manager/status`     | `MrmBehaviorStatus`       | mrm_pull_over_manager                      | mrm_handler                                           |
 
 **Note on self-loops:** Topics 5 and 8–12 are published by removed nodes and consumed by
 other removed nodes (e.g. shift_decider → vehicle_cmd_gate, mrm operators → mrm_handler).
@@ -84,20 +84,20 @@ Add publishers for the 13 missing functional topics to the sentinel Linux binary
 **Implementation approach:** Most of these topics carry data that the sentinel already
 computes internally. The work is wiring new publishers, not new algorithms.
 
-- [ ] 8.1a — MRM behavior status publishers (topics 11–13)
+- [x] 8.1a — MRM behavior status publishers (topics 11–13)
   - Publish `MrmBehaviorStatus` on `/system/mrm/emergency_stop/status`
   - Publish `MrmBehaviorStatus` on `/system/mrm/comfortable_stop/status`
   - Publish `MrmBehaviorStatus` on `/system/mrm/pull_over_manager/status`
   - Status: AVAILABLE when not operating, OPERATING when active
   - **Requires:** `tier4_system_msgs` message generation (already available)
 
-- [ ] 8.1b — MRM handler emergency output topics (topics 8–10)
+- [x] 8.1b — MRM handler emergency output topics (topics 8–10)
   - Publish `GearCommand` on `/system/emergency/gear_cmd`
   - Publish `HazardLightsCommand` on `/system/emergency/hazard_lights_cmd`
   - Publish `TurnIndicatorsCommand` on `/system/emergency/turn_indicators_cmd`
   - Data: same as MRM output already computed in 30 Hz timer
 
-- [ ] 8.1c — Vehicle command gate additional publishers (topics 3–7)
+- [x] 8.1c — Vehicle command gate additional publishers (topics 3–7)
   - Publish `VehicleEmergencyStamped` on `/control/command/emergency_cmd`
   - Publish `GateMode` on `/control/gate_mode_cmd` (always AUTO)
   - Publish `GearCommand` on `/control/shift_decider/gear_cmd`
@@ -106,12 +106,12 @@ computes internally. The work is wiring new publishers, not new algorithms.
   - **Requires:** `autoware_vehicle_msgs` VehicleEmergencyStamped, GateMode generation
   - **Requires:** `IsStopped` message — check which package defines it
 
-- [ ] 8.1d — Engagement topics (topics 1–2)
+- [x] 8.1d — Engagement topics (topics 1–2)
   - Publish `Engage` on `/api/autoware/get/engage` (engagement status)
   - Publish `Engage` on `/autoware/engage` (legacy compatibility)
   - **Requires:** `autoware_vehicle_msgs` Engage generation
 
-- [ ] 8.1e — Message generation for new types
+- [x] 8.1e — Message generation for new types
   - Generate `VehicleEmergencyStamped` (if not already available)
   - Generate `GateMode` (if not already available)
   - Generate `Engage` (if not already available)

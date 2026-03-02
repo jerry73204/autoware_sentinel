@@ -178,7 +178,9 @@ dependencies = [
  "log",
  "nav_msgs",
  "nros",
+ "tier4_control_msgs",
  "tier4_system_msgs",
+ "tier4_vehicle_msgs",
 ]
 
 [[package]]
@@ -902,6 +904,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tier4_control_msgs"
+version = "0.1.0"
+dependencies = [
+ "autoware_common_msgs",
+ "builtin_interfaces",
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
 name = "tier4_system_msgs"
 version = "0.1.0"
 dependencies = [
@@ -909,6 +922,17 @@ dependencies = [
  "builtin_interfaces",
  "diagnostic_msgs",
  "geometry_msgs",
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+ "std_msgs",
+]
+
+[[package]]
+name = "tier4_vehicle_msgs"
+version = "0.1.0"
+dependencies = [
+ "builtin_interfaces",
  "heapless",
  "nros-core",
  "nros-serdes",

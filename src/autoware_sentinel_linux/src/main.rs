@@ -63,10 +63,12 @@ use autoware_adapi_v1_msgs::srv::{ChangeOperationMode, ChangeOperationModeRespon
 use autoware_control_msgs::msg::Control;
 use autoware_system_msgs::msg::AutowareState;
 use autoware_vehicle_msgs::msg::{
-    GearCommand, GearReport, HazardLightsCommand, TurnIndicatorsCommand, VelocityReport,
+    Engage, GearCommand, GearReport, HazardLightsCommand, TurnIndicatorsCommand, VelocityReport,
 };
 use geometry_msgs::msg::{Accel, Twist};
-use tier4_system_msgs::msg::OperationModeAvailability;
+use tier4_control_msgs::msg::{GateMode, IsStopped};
+use tier4_system_msgs::msg::{MrmBehaviorStatus, OperationModeAvailability};
+use tier4_vehicle_msgs::msg::VehicleEmergencyStamped;
 
 /// MRM handler state: OPERATING (emergency response active).
 const MRM_STATE_OPERATING: u16 = 2;
@@ -82,6 +84,13 @@ const DT: f32 = 1.0 / 30.0;
 
 /// OperationModeState constant: AUTONOMOUS mode.
 const OP_MODE_AUTONOMOUS: u8 = 2;
+
+/// MrmBehaviorStatus constants.
+const MRM_BEHAVIOR_AVAILABLE: u8 = 1;
+const MRM_BEHAVIOR_OPERATING: u8 = 2;
+
+/// GateMode constant: AUTO.
+const GATE_MODE_AUTO: u8 = 0;
 
 // ============================================================================
 // Static shared state
@@ -261,20 +270,60 @@ fn run() -> Result<(), NodeError> {
     *ISLAND.0.borrow_mut() = Some(SafetyIsland::new());
 
     let config = ExecutorConfig::from_env().node_name("sentinel");
-    let mut executor = Executor::<_, 16, 16384>::open(&config)?;
+    let mut executor = Executor::<_, 48, 16384>::open(&config)?;
 
     // --- Create publishers (node borrows executor, dropped after) ---
-    let (mrm_state_pub, hazard_pub, gear_pub, control_pub, turn_pub, op_mode_pub) = {
+    let (
+        mrm_state_pub,
+        hazard_pub,
+        gear_pub,
+        control_pub,
+        turn_pub,
+        op_mode_pub,
+        // Phase 8.1a — MRM behavior status (topics 11–13)
+        mrm_estop_status_pub,
+        mrm_comfy_status_pub,
+        mrm_pullover_status_pub,
+        // Phase 8.1b — MRM handler emergency outputs (topics 8–10)
+        emergency_gear_pub,
+        emergency_hazard_pub,
+        emergency_turn_pub,
+        // Phase 8.1c — Vehicle command gate additional (topics 3–7)
+        emergency_cmd_pub,
+        gate_mode_pub,
+        shift_decider_gear_pub,
+        is_stopped_pub,
+        gate_op_mode_pub,
+        // Phase 8.1d — Engagement (topics 1–2)
+        engage_api_pub,
+        engage_compat_pub,
+    ) = {
         let mut node = executor.create_node("sentinel")?;
         (
-            // Autoware-compatible output topic names
+            // Existing 6 publishers
             node.create_publisher::<MrmState>("/system/fail_safe/mrm_state")?,
             node.create_publisher::<HazardLightsCommand>("/control/command/hazard_lights_cmd")?,
             node.create_publisher::<GearCommand>("/control/command/gear_cmd")?,
             node.create_publisher::<Control>("/control/command/control_cmd")?,
             node.create_publisher::<TurnIndicatorsCommand>("/control/command/turn_indicators_cmd")?,
-            // Engagement flow: operation mode state
             node.create_publisher::<OperationModeState>("/api/operation_mode/state")?,
+            // 8.1a — MRM behavior status
+            node.create_publisher::<MrmBehaviorStatus>("/system/mrm/emergency_stop/status")?,
+            node.create_publisher::<MrmBehaviorStatus>("/system/mrm/comfortable_stop/status")?,
+            node.create_publisher::<MrmBehaviorStatus>("/system/mrm/pull_over_manager/status")?,
+            // 8.1b — MRM handler emergency outputs
+            node.create_publisher::<GearCommand>("/system/emergency/gear_cmd")?,
+            node.create_publisher::<HazardLightsCommand>("/system/emergency/hazard_lights_cmd")?,
+            node.create_publisher::<TurnIndicatorsCommand>("/system/emergency/turn_indicators_cmd")?,
+            // 8.1c — Vehicle command gate additional
+            node.create_publisher::<VehicleEmergencyStamped>("/control/command/emergency_cmd")?,
+            node.create_publisher::<GateMode>("/control/gate_mode_cmd")?,
+            node.create_publisher::<GearCommand>("/control/shift_decider/gear_cmd")?,
+            node.create_publisher::<IsStopped>("/control/vehicle_cmd_gate/is_stopped")?,
+            node.create_publisher::<OperationModeState>("/control/vehicle_cmd_gate/operation_mode")?,
+            // 8.1d — Engagement
+            node.create_publisher::<Engage>("/api/autoware/get/engage")?,
+            node.create_publisher::<Engage>("/autoware/engage")?,
         )
     };
 
@@ -450,16 +499,94 @@ fn run() -> Result<(), NodeError> {
             turn_pub.publish(&gate_output.turn_indicators).ok();
 
             // Engagement flow: publish OperationModeState (always autonomous-ready)
-            op_mode_pub
-                .publish(&OperationModeState {
+            let op_mode_state = OperationModeState {
+                stamp: Default::default(),
+                mode: OP_MODE_AUTONOMOUS,
+                is_autoware_control_enabled: true,
+                is_in_transition: false,
+                is_stop_mode_available: true,
+                is_autonomous_mode_available: true,
+                is_local_mode_available: true,
+                is_remote_mode_available: true,
+            };
+            op_mode_pub.publish(&op_mode_state).ok();
+
+            // ── Phase 8.1 — Additional functional topics ────────────
+
+            // 8.1a — MRM behavior status
+            mrm_estop_status_pub
+                .publish(&MrmBehaviorStatus {
                     stamp: Default::default(),
-                    mode: OP_MODE_AUTONOMOUS,
-                    is_autoware_control_enabled: true,
-                    is_in_transition: false,
-                    is_stop_mode_available: true,
-                    is_autonomous_mode_available: true,
-                    is_local_mode_available: true,
-                    is_remote_mode_available: true,
+                    state: if island.emergency_stop.is_operating() {
+                        MRM_BEHAVIOR_OPERATING
+                    } else {
+                        MRM_BEHAVIOR_AVAILABLE
+                    },
+                })
+                .ok();
+            mrm_comfy_status_pub
+                .publish(&MrmBehaviorStatus {
+                    stamp: Default::default(),
+                    state: if island.comfortable_stop.is_operating() {
+                        MRM_BEHAVIOR_OPERATING
+                    } else {
+                        MRM_BEHAVIOR_AVAILABLE
+                    },
+                })
+                .ok();
+            mrm_pullover_status_pub
+                .publish(&MrmBehaviorStatus {
+                    stamp: Default::default(),
+                    state: MRM_BEHAVIOR_AVAILABLE,
+                })
+                .ok();
+
+            // 8.1b — MRM handler emergency outputs
+            emergency_gear_pub.publish(&mrm_output.gear).ok();
+            emergency_hazard_pub.publish(&mrm_output.hazard_lights).ok();
+            emergency_turn_pub
+                .publish(&TurnIndicatorsCommand::default())
+                .ok();
+
+            // 8.1c — Vehicle command gate additional
+            emergency_cmd_pub
+                .publish(&VehicleEmergencyStamped {
+                    stamp: Default::default(),
+                    emergency: island.mrm_handler.state() == MRM_STATE_OPERATING,
+                })
+                .ok();
+            gate_mode_pub
+                .publish(&GateMode {
+                    data: GATE_MODE_AUTO,
+                })
+                .ok();
+            shift_decider_gear_pub
+                .publish(&GearCommand {
+                    command: auto_gear,
+                    ..Default::default()
+                })
+                .ok();
+            is_stopped_pub
+                .publish(&IsStopped {
+                    stamp: Default::default(),
+                    data: island.is_stopped,
+                    requested_sources: Default::default(),
+                })
+                .ok();
+            gate_op_mode_pub.publish(&op_mode_state).ok();
+
+            // 8.1d — Engagement
+            let engaged = island.autoware_state.state == AUTOWARE_STATE_DRIVING;
+            engage_api_pub
+                .publish(&Engage {
+                    stamp: Default::default(),
+                    engage: engaged,
+                })
+                .ok();
+            engage_compat_pub
+                .publish(&Engage {
+                    stamp: Default::default(),
+                    engage: engaged,
                 })
                 .ok();
         });
