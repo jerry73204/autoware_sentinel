@@ -17,6 +17,14 @@
   <depend>tier4_control_msgs</depend>
   <depend>tier4_system_msgs</depend>
   <depend>tier4_vehicle_msgs</depend>
+  <depend>visualization_msgs</depend>
+
+  <!-- Debug/diagnostic message packages (Phase 8.2) -->
+  <depend>autoware_control_validator</depend>
+  <depend>autoware_internal_debug_msgs</depend>
+  <depend>autoware_internal_msgs</depend>
+  <depend>autoware_operation_mode_transition_manager</depend>
+  <depend>autoware_vehicle_cmd_gate</depend>
 
   <export>
     <build_type>ament_cargo</build_type>

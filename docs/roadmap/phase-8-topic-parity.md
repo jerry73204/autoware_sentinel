@@ -118,7 +118,7 @@ computes internally. The work is wiring new publishers, not new algorithms.
   - Generate `IsStopped` (check package: autoware_adapi_v1_msgs or tier4_system_msgs)
   - Update `package.xml` and re-run `just generate` in sentinel_linux
 
-- [ ] 8.1f — Integration test: verify all 13 functional topics present
+- [x] 8.1f — Integration test: verify all 13 functional topics present
   - Extend `test_sentinel_replaces_autoware_nodes` or add new test
   - Echo each functional topic, verify messages received
 
@@ -126,7 +126,7 @@ computes internally. The work is wiring new publishers, not new algorithms.
 
 Add publishers for the 10 missing debug/diagnostic topics.
 
-- [ ] 8.2a — Control validator debug topics (topics 16–19)
+- [x] 8.2a — Control validator debug topics (topics 16–19)
   - Publish `MarkerArray` on `/control/control_validator/debug/marker`
   - Publish `MarkerArray` on `/control/control_validator/output/markers`
   - Publish `ControlValidatorStatus` on `/control/control_validator/validation_status`
@@ -136,7 +136,7 @@ Add publishers for the 10 missing debug/diagnostic topics.
   - **Requires:** `visualization_msgs` MarkerArray generation
   - **Requires:** `ControlValidatorStatus` message generation (check package)
 
-- [ ] 8.2b — Vehicle command gate debug topics (topics 20–23)
+- [x] 8.2b — Vehicle command gate debug topics (topics 20–23)
   - Publish `IsFilterActivated` on `/control/vehicle_cmd_gate/is_filter_activated`
   - Publish `BoolStamped` on `/control/vehicle_cmd_gate/is_filter_activated/flag`
   - Publish `MarkerArray` on `/control/vehicle_cmd_gate/is_filter_activated/marker`
@@ -144,12 +144,12 @@ Add publishers for the 10 missing debug/diagnostic topics.
   - **Requires:** `IsFilterActivated` message generation (check package)
   - **Requires:** `BoolStamped` message generation (check package)
 
-- [ ] 8.2c — Remaining debug topics (topics 14–15)
+- [x] 8.2c — Remaining debug topics (topics 14–15)
   - Publish debug info on `/control/autoware_operation_mode_transition_manager/debug_info`
   - Publish `PublishedTime` on `/control/command/control_cmd/debug/published_time`
   - **Requires:** Identify message types for DebugInfo and PublishedTime
 
-- [ ] 8.2d — Integration test: full topic parity
+- [x] 8.2d — Integration test: full topic parity
   - Run baseline Autoware, capture `ros2 topic list`
   - Run modified Autoware + sentinel, capture `ros2 topic list`
   - Assert: diff is empty (exact topic parity)

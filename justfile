@@ -37,11 +37,11 @@ build-zephyr:
 
 # Build Linux sentinel binary
 build-sentinel-linux:
-    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=24 cargo build
+    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=32 cargo build
 
 # Run Linux sentinel binary
 run-sentinel-linux:
-    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=24 RUST_LOG=info cargo run
+    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=32 RUST_LOG=info cargo run
 
 # Test all packages (unit tests)
 test:

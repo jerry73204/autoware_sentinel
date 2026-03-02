@@ -70,6 +70,14 @@ use tier4_control_msgs::msg::{GateMode, IsStopped};
 use tier4_system_msgs::msg::{MrmBehaviorStatus, OperationModeAvailability};
 use tier4_vehicle_msgs::msg::VehicleEmergencyStamped;
 
+// Debug/diagnostic message types (Phase 8.2)
+use autoware_control_validator_msgs::msg::ControlValidatorStatus;
+use autoware_internal_debug_msgs::msg::BoolStamped;
+use autoware_internal_msgs::msg::PublishedTime;
+use autoware_operation_mode_transition_manager_msgs::msg::OperationModeTransitionManagerDebug;
+use autoware_vehicle_cmd_gate_msgs::msg::IsFilterActivated;
+use visualization_msgs::msg::MarkerArray;
+
 /// MRM handler state: OPERATING (emergency response active).
 const MRM_STATE_OPERATING: u16 = 2;
 
@@ -297,6 +305,19 @@ fn run() -> Result<(), NodeError> {
         // Phase 8.1d — Engagement (topics 1–2)
         engage_api_pub,
         engage_compat_pub,
+        // Phase 8.2a — Control validator debug (topics 16–19)
+        cv_debug_marker_pub,
+        cv_output_markers_pub,
+        cv_validation_status_pub,
+        cv_virtual_wall_pub,
+        // Phase 8.2b — Vehicle cmd gate filter debug (topics 20–23)
+        filter_activated_pub,
+        filter_flag_pub,
+        filter_marker_pub,
+        filter_marker_raw_pub,
+        // Phase 8.2c — Remaining debug (topics 14–15)
+        op_mode_debug_pub,
+        published_time_pub,
     ) = {
         let mut node = executor.create_node("sentinel")?;
         (
@@ -324,6 +345,19 @@ fn run() -> Result<(), NodeError> {
             // 8.1d — Engagement
             node.create_publisher::<Engage>("/api/autoware/get/engage")?,
             node.create_publisher::<Engage>("/autoware/engage")?,
+            // 8.2a — Control validator debug
+            node.create_publisher::<MarkerArray>("/control/control_validator/debug/marker")?,
+            node.create_publisher::<MarkerArray>("/control/control_validator/output/markers")?,
+            node.create_publisher::<ControlValidatorStatus>("/control/control_validator/validation_status")?,
+            node.create_publisher::<MarkerArray>("/control/control_validator/virtual_wall")?,
+            // 8.2b — Vehicle cmd gate filter debug
+            node.create_publisher::<IsFilterActivated>("/control/vehicle_cmd_gate/is_filter_activated")?,
+            node.create_publisher::<BoolStamped>("/control/vehicle_cmd_gate/is_filter_activated/flag")?,
+            node.create_publisher::<MarkerArray>("/control/vehicle_cmd_gate/is_filter_activated/marker")?,
+            node.create_publisher::<MarkerArray>("/control/vehicle_cmd_gate/is_filter_activated/marker_raw")?,
+            // 8.2c — Remaining debug
+            node.create_publisher::<OperationModeTransitionManagerDebug>("/control/autoware_operation_mode_transition_manager/debug_info")?,
+            node.create_publisher::<PublishedTime>("/control/command/control_cmd/debug/published_time")?,
         )
     };
 
@@ -587,6 +621,103 @@ fn run() -> Result<(), NodeError> {
                 .publish(&Engage {
                     stamp: Default::default(),
                     engage: engaged,
+                })
+                .ok();
+
+            // ── Phase 8.2 — Debug/diagnostic topics ─────────────────
+
+            // 8.2a — Control validator debug (empty markers, real status)
+            let empty_markers = MarkerArray {
+                markers: Default::default(),
+            };
+            cv_debug_marker_pub.publish(&empty_markers).ok();
+            cv_output_markers_pub.publish(&empty_markers).ok();
+            cv_virtual_wall_pub.publish(&empty_markers).ok();
+
+            let cv_status = island.control_validator.status();
+            cv_validation_status_pub
+                .publish(&ControlValidatorStatus {
+                    stamp: Default::default(),
+                    is_valid_max_distance_deviation: true,
+                    is_valid_acc: cv_status.is_valid_acc,
+                    is_rolling_back: cv_status.is_rolling_back,
+                    is_over_velocity: cv_status.is_over_velocity,
+                    is_valid_lateral_jerk: cv_status.is_valid_lateral_jerk,
+                    has_overrun_stop_point: false,
+                    will_overrun_stop_point: false,
+                    is_valid_latency: true,
+                    is_valid_yaw: true,
+                    is_warn_yaw: false,
+                    max_distance_deviation: 0.0,
+                    steering_rate: cv_status.steering_rate,
+                    lateral_jerk: cv_status.lateral_jerk,
+                    desired_acc: cv_status.desired_acc,
+                    measured_acc: cv_status.measured_acc,
+                    target_vel: cv_status.target_vel,
+                    vehicle_vel: cv_status.vehicle_vel,
+                    dist_to_stop: 0.0,
+                    pred_dist_to_stop: 0.0,
+                    nearest_trajectory_vel: 0.0,
+                    latency: 0.0,
+                    yaw_deviation: 0.0,
+                    invalid_count: cv_status.invalid_count as i64,
+                })
+                .ok();
+
+            // 8.2b — Vehicle cmd gate filter debug (all inactive)
+            filter_activated_pub
+                .publish(&IsFilterActivated {
+                    stamp: Default::default(),
+                    is_activated: false,
+                    is_activated_on_steering: false,
+                    is_activated_on_steering_rate: false,
+                    is_activated_on_speed: false,
+                    is_activated_on_acceleration: false,
+                    is_activated_on_jerk: false,
+                })
+                .ok();
+            filter_flag_pub
+                .publish(&BoolStamped {
+                    stamp: Default::default(),
+                    data: false,
+                })
+                .ok();
+            filter_marker_pub.publish(&empty_markers).ok();
+            filter_marker_raw_pub.publish(&empty_markers).ok();
+
+            // 8.2c — Remaining debug
+            op_mode_debug_pub
+                .publish(&OperationModeTransitionManagerDebug {
+                    stamp: Default::default(),
+                    status: Default::default(),
+                    in_autoware_control: true,
+                    in_transition: false,
+                    is_all_ok: true,
+                    engage_allowed_for_stopped_vehicle: true,
+                    trajectory_available_ok: true,
+                    lateral_deviation_ok: true,
+                    yaw_deviation_ok: true,
+                    speed_upper_deviation_ok: true,
+                    speed_lower_deviation_ok: true,
+                    stop_ok: true,
+                    large_acceleration_ok: true,
+                    large_lateral_acceleration_ok: true,
+                    large_lateral_acceleration_diff_ok: true,
+                    current_speed: island.current_velocity,
+                    target_control_speed: 0.0,
+                    target_planning_speed: 0.0,
+                    target_control_acceleration: 0.0,
+                    lateral_acceleration: 0.0,
+                    lateral_acceleration_deviation: 0.0,
+                    lateral_deviation: 0.0,
+                    yaw_deviation: 0.0,
+                    speed_deviation: 0.0,
+                })
+                .ok();
+            published_time_pub
+                .publish(&PublishedTime {
+                    header: Default::default(),
+                    published_stamp: Default::default(),
                 })
                 .ok();
         });

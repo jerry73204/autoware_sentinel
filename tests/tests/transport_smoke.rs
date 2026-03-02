@@ -290,3 +290,152 @@ fn test_bidirectional_round_trip(zenohd_unique: ZenohRouter, sentinel_binary: Pa
         "No Control messages received in bidirectional round-trip test"
     );
 }
+
+// =============================================================================
+// Topic parity (Phase 8.1f + 8.2d)
+// =============================================================================
+
+/// All 29 topics that the sentinel must publish (6 original + 13 functional + 10 debug).
+const SENTINEL_TOPICS: &[(&str, &str)] = &[
+    // Original 6
+    ("/system/fail_safe/mrm_state", "autoware_adapi_v1_msgs/msg/MrmState"),
+    ("/control/command/hazard_lights_cmd", "autoware_vehicle_msgs/msg/HazardLightsCommand"),
+    ("/control/command/gear_cmd", "autoware_vehicle_msgs/msg/GearCommand"),
+    ("/control/command/control_cmd", "autoware_control_msgs/msg/Control"),
+    ("/control/command/turn_indicators_cmd", "autoware_vehicle_msgs/msg/TurnIndicatorsCommand"),
+    ("/api/operation_mode/state", "autoware_adapi_v1_msgs/msg/OperationModeState"),
+    // Phase 8.1 — 13 functional topics
+    ("/system/mrm/emergency_stop/status", "tier4_system_msgs/msg/MrmBehaviorStatus"),
+    ("/system/mrm/comfortable_stop/status", "tier4_system_msgs/msg/MrmBehaviorStatus"),
+    ("/system/mrm/pull_over_manager/status", "tier4_system_msgs/msg/MrmBehaviorStatus"),
+    ("/system/emergency/gear_cmd", "autoware_vehicle_msgs/msg/GearCommand"),
+    ("/system/emergency/hazard_lights_cmd", "autoware_vehicle_msgs/msg/HazardLightsCommand"),
+    ("/system/emergency/turn_indicators_cmd", "autoware_vehicle_msgs/msg/TurnIndicatorsCommand"),
+    ("/control/command/emergency_cmd", "tier4_vehicle_msgs/msg/VehicleEmergencyStamped"),
+    ("/control/gate_mode_cmd", "tier4_control_msgs/msg/GateMode"),
+    ("/control/shift_decider/gear_cmd", "autoware_vehicle_msgs/msg/GearCommand"),
+    ("/control/vehicle_cmd_gate/is_stopped", "tier4_control_msgs/msg/IsStopped"),
+    ("/control/vehicle_cmd_gate/operation_mode", "autoware_adapi_v1_msgs/msg/OperationModeState"),
+    ("/api/autoware/get/engage", "autoware_vehicle_msgs/msg/Engage"),
+    ("/autoware/engage", "autoware_vehicle_msgs/msg/Engage"),
+    // Phase 8.2 — 10 debug/diagnostic topics
+    ("/control/control_validator/debug/marker", "visualization_msgs/msg/MarkerArray"),
+    ("/control/control_validator/output/markers", "visualization_msgs/msg/MarkerArray"),
+    ("/control/control_validator/validation_status", "autoware_control_validator/msg/ControlValidatorStatus"),
+    ("/control/control_validator/virtual_wall", "visualization_msgs/msg/MarkerArray"),
+    ("/control/vehicle_cmd_gate/is_filter_activated", "autoware_vehicle_cmd_gate/msg/IsFilterActivated"),
+    ("/control/vehicle_cmd_gate/is_filter_activated/flag", "autoware_internal_debug_msgs/msg/BoolStamped"),
+    ("/control/vehicle_cmd_gate/is_filter_activated/marker", "visualization_msgs/msg/MarkerArray"),
+    ("/control/vehicle_cmd_gate/is_filter_activated/marker_raw", "visualization_msgs/msg/MarkerArray"),
+    ("/control/autoware_operation_mode_transition_manager/debug_info", "autoware_operation_mode_transition_manager/msg/OperationModeTransitionManagerDebug"),
+    ("/control/command/control_cmd/debug/published_time", "autoware_internal_msgs/msg/PublishedTime"),
+];
+
+/// Verify sentinel publishes all 29 topics (Phase 8.1f + 8.2d).
+///
+/// Starts sentinel, then checks each topic in parallel using a bash script
+/// that runs `ros2 topic echo --once` with a timeout for each topic.
+#[rstest]
+fn test_sentinel_topic_parity(zenohd_unique: ZenohRouter, sentinel_binary: PathBuf) {
+    if !require_ros2_autoware() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start sentinel
+    eprintln!("Starting sentinel...");
+    let _sentinel = start_sentinel(&sentinel_binary, &locator).expect("Sentinel failed to start");
+
+    // Give sentinel time to establish all publishers
+    std::thread::sleep(Duration::from_secs(3));
+
+    let env_setup = sentinel_tests::ros2::ros2_env_setup_with_locator(&locator);
+
+    // Check all topics in parallel: spawn one `ros2 topic echo --once` per topic,
+    // collect results. Each gets 15s timeout.
+    let mut script = format!(
+        "#!/bin/bash\nset -eo pipefail\n{env_setup}\n\n\
+         RESULT_DIR=$(mktemp -d)\n\
+         PIDS=()\n\n"
+    );
+
+    for (i, (topic, msg_type)) in SENTINEL_TOPICS.iter().enumerate() {
+        script.push_str(&format!(
+            "( timeout 15 ros2 topic echo --once {topic} {msg_type} \
+               --qos-reliability best_effort > /dev/null 2>&1 \
+               && echo OK > \"$RESULT_DIR/{i}\" \
+               || echo FAIL > \"$RESULT_DIR/{i}\" ) &\n\
+             PIDS+=($!)\n"
+        ));
+    }
+
+    script.push_str(
+        "\n# Wait for all background jobs\n\
+         for pid in \"${PIDS[@]}\"; do wait \"$pid\" 2>/dev/null; done\n\n\
+         # Report results\n\
+         PASS=0\nFAIL=0\nFAILED_TOPICS=\"\"\n"
+    );
+
+    for (i, (topic, _)) in SENTINEL_TOPICS.iter().enumerate() {
+        script.push_str(&format!(
+            "if [ \"$(cat \"$RESULT_DIR/{i}\" 2>/dev/null)\" = \"OK\" ]; then\n\
+             \x20 PASS=$((PASS+1))\n\
+             else\n\
+             \x20 FAIL=$((FAIL+1))\n\
+             \x20 FAILED_TOPICS=\"$FAILED_TOPICS  {topic}\\n\"\n\
+             fi\n"
+        ));
+    }
+
+    script.push_str(
+        "echo \"TOPICS_PASS=$PASS\"\n\
+         echo \"TOPICS_FAIL=$FAIL\"\n\
+         if [ -n \"$FAILED_TOPICS\" ]; then\n\
+         \x20 echo \"FAILED:\"\n\
+         \x20 echo -e \"$FAILED_TOPICS\"\n\
+         fi\n\
+         rm -rf \"$RESULT_DIR\"\n\
+         [ \"$FAIL\" -eq 0 ]\n"
+    );
+
+    eprintln!("Checking {} topics in parallel...", SENTINEL_TOPICS.len());
+
+    let check_output = std::process::Command::new("bash")
+        .args(["-c", &script])
+        .output()
+        .expect("Failed to spawn topic checker");
+
+    let output = String::from_utf8_lossy(&check_output.stdout).to_string();
+
+    eprintln!("{}", output);
+
+    // Parse results
+    let pass_count: usize = output
+        .lines()
+        .find(|l| l.starts_with("TOPICS_PASS="))
+        .and_then(|l| l.strip_prefix("TOPICS_PASS="))
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+
+    let fail_count: usize = output
+        .lines()
+        .find(|l| l.starts_with("TOPICS_FAIL="))
+        .and_then(|l| l.strip_prefix("TOPICS_FAIL="))
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(SENTINEL_TOPICS.len());
+
+    eprintln!(
+        "Topic parity: {}/{} passed, {} failed",
+        pass_count,
+        SENTINEL_TOPICS.len(),
+        fail_count
+    );
+
+    assert_eq!(
+        fail_count, 0,
+        "{} of {} sentinel topics were not published. See FAILED list above.",
+        fail_count,
+        SENTINEL_TOPICS.len()
+    );
+}
