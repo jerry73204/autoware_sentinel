@@ -34,36 +34,27 @@ All of this happens in a deterministic 30 Hz control loop with no heap allocatio
 
 ## Architecture
 
-```
-                    ┌─────────────────────────────────────────┐
-                    │           Main Autoware Compute          │
-                    │  (Planning, Perception, Localization)    │
-                    └────────────────┬────────────────────────┘
-                                     │ Heartbeat + Control commands
-                                     │ (Zenoh / CycloneDDS)
-                    ┌────────────────▼────────────────────────┐
-                    │          Autoware Sentinel               │
-                    │                                          │
-                    │  VelocityReport ──► StopFilter           │
-                    │       │              │                    │
-                    │       ▼              ▼                    │
-                    │  VelocityConverter  Twist2Accel           │
-                    │       │              │                    │
-                    │  Heartbeat ──► MRM Handler                │
-                    │                 │         │               │
-                    │          EmergencyStop  ComfortableStop   │
-                    │                 │         │               │
-                    │                 ▼         ▼               │
-                    │            VehicleCmdGate                 │
-                    │                 │                          │
-                    │          ControlValidator                 │
-                    │                 │                          │
-                    │     OperationModeTransitionManager        │
-                    │                 │                          │
-                    └─────────────────┼─────────────────────────┘
-                                      │ Control, Gear, Hazard commands
-                                      ▼
-                              Vehicle Interface
+```mermaid
+graph TD
+    A["Main Autoware Compute<br/>(Planning, Perception, Localization)"]
+    A -->|"Heartbeat + Control commands<br/>(Zenoh / CycloneDDS)"| B
+
+    subgraph Sentinel["Autoware Sentinel"]
+        B["VelocityReport"] --> C["StopFilter"]
+        C --> D["VelocityConverter"]
+        C --> E["Twist2Accel"]
+        F["Heartbeat"] --> G["MRM Handler"]
+        G --> H["EmergencyStop"]
+        G --> I["ComfortableStop"]
+        H --> J["VehicleCmdGate"]
+        I --> J
+        D --> J
+        E --> J
+        J --> K["ControlValidator"]
+        K --> L["OperationModeTransitionManager"]
+    end
+
+    L -->|"Control, Gear, Hazard commands"| M["Vehicle Interface"]
 ```
 
 ## Key Design Decisions
