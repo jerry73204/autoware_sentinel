@@ -36,18 +36,21 @@ autoware-nano-ros/
 │   ├── verification/                # Phase 5 — Verus formal proofs
 │   ├── autoware_sentinel/           # Phase 6 — Zephyr application
 │   └── autoware_sentinel_linux/     # Phase 7.1 — Linux native binary
-├── tests/                           # Phase 7.2 — Integration tests (nextest)
+├── tests/                           # Phase 7.2–7.3 — Integration tests (nextest)
 │   ├── Cargo.toml                   # sentinel-tests crate
 │   ├── src/
 │   │   ├── lib.rs                   # TestError, helpers (count_pattern, wait_for_port)
+│   │   ├── autoware.rs              # Autoware helpers (map path, poses, prerequisites)
 │   │   ├── process.rs               # ManagedProcess, process group cleanup
-│   │   ├── ros2.rs                  # Ros2Process (topic pub/echo with rmw_zenoh_cpp)
+│   │   ├── ros2.rs                  # Ros2Process, topic_pub_once, service_call, etc.
 │   │   └── fixtures/                # rstest fixtures
 │   │       ├── mod.rs
+│   │       ├── autoware_launcher.rs # AutowareLauncher (dump, filter, replay)
 │   │       ├── zenohd_router.rs     # ZenohRouter (ephemeral port allocation)
 │   │       └── sentinel.rs          # sentinel_binary(), start_sentinel()
 │   └── tests/
-│       └── transport_smoke.rs       # Sentinel ↔ ROS 2 transport tests (9 tests)
+│       ├── transport_smoke.rs       # Sentinel ↔ ROS 2 transport tests (9 tests)
+│       └── planning_simulator.rs    # Autoware planning simulator tests (6 tests)
 ├── .config/
 │   └── nextest.toml                 # nextest profiles, test group serialization
 ├── docs/
@@ -86,6 +89,9 @@ just test               # test all packages (unit tests)
 just test-integration   # run integration tests with nextest
 just test-transport     # run transport smoke tests only
 just test-planning      # run planning simulator tests only
+just dump-autoware           # dump planning simulator launch to record.json
+just launch-autoware-baseline # launch unmodified Autoware via play_launch
+just launch-autoware-modified # launch filtered Autoware + zenohd + sentinel
 just cross-check        # cargo check --target thumbv7em-none-eabihf in each
 just generate-bindings  # regenerate messages in all packages
 just format             # cargo fmt on all packages
@@ -285,7 +291,7 @@ linear.x.abs() < self.vx_threshold
 | 4 | Validation Layer (control validator, twist2accel) | Complete |
 | 5 | Formal Verification (Kani + Verus) | Complete |
 | 6 | Zephyr Application (single binary) | In progress |
-| 7 | Integration Testing (Autoware planning simulator) | In progress (7.1–7.2 complete) |
+| 7 | Integration Testing (Autoware planning simulator) | In progress (7.1–7.3 complete) |
 
 See `docs/roadmap/` for detailed phase docs. Roadmap docs use `- [ ]` / `- [x]` checkboxes
 on subphase headers and acceptance criteria to track completion progress.
@@ -326,6 +332,9 @@ Linux binary and ROS 2 (`rmw_zenoh_cpp`) through a shared zenohd router.
 just test-integration   # all integration tests
 just test-transport     # transport smoke tests only
 just test-planning      # planning simulator tests only
+just dump-autoware            # dump planning simulator to record.json
+just launch-autoware-baseline # replay unmodified Autoware
+just launch-autoware-modified # filtered Autoware + zenohd + sentinel
 cd tests && cargo nextest run -E 'test(test_sentinel_starts)'  # single test
 ```
 

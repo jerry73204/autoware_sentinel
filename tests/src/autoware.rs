@@ -9,20 +9,17 @@ use std::path::{Path, PathBuf};
 // Map path resolution
 // =============================================================================
 
-/// Default map path (Autoware sample-map-planning download location)
-const DEFAULT_MAP_DIR: &str = "autoware_map/sample-map-planning";
+/// Default map path (Autoware 1.5.0 test map from installed packages)
+const DEFAULT_MAP_PATH: &str = "/opt/autoware/1.5.0/share/autoware_test_utils/test_map";
 
 /// Resolve the Autoware map path.
 ///
-/// Checks `$MAP_PATH` first, then falls back to `$HOME/autoware_map/sample-map-planning`.
+/// Checks `$MAP_PATH` first, then falls back to the Autoware 1.5.0 test map.
 pub fn autoware_map_path() -> PathBuf {
     if let Ok(path) = std::env::var("MAP_PATH") {
         return PathBuf::from(path);
     }
-    if let Ok(home) = std::env::var("HOME") {
-        return PathBuf::from(home).join(DEFAULT_MAP_DIR);
-    }
-    PathBuf::from(DEFAULT_MAP_DIR)
+    PathBuf::from(DEFAULT_MAP_PATH)
 }
 
 /// Check if the Autoware map data is available.
@@ -36,7 +33,7 @@ pub fn is_autoware_map_available() -> bool {
 pub fn require_autoware_map() -> bool {
     if !is_autoware_map_available() {
         eprintln!(
-            "Skipping test: Autoware map not found at {:?} (set $MAP_PATH or download sample-map-planning)",
+            "Skipping test: Autoware map not found at {:?} (set $MAP_PATH or install autoware_test_utils)",
             autoware_map_path()
         );
         return false;

@@ -210,11 +210,27 @@ pub fn replay_record_with_env(record_path: &Path, extra_env: &str) -> TestResult
 
 /// Start Autoware via play_launch replay and wait for it to be ready.
 ///
-/// Replays the record and waits for the "All processes started" pattern
-/// in the output, indicating Autoware has finished launching.
+/// Replays the record (default DDS) and waits for the "All processes started"
+/// pattern in the output, indicating Autoware has finished launching.
 pub fn start_autoware(record_path: &Path) -> TestResult<ManagedProcess> {
+    start_autoware_impl(record_path, "")
+}
+
+/// Start Autoware with rmw_zenoh_cpp transport.
+///
+/// Replays the record with `RMW_IMPLEMENTATION=rmw_zenoh_cpp` and zenoh
+/// client configuration pointing to the given locator.
+pub fn start_autoware_zenoh(record_path: &Path, locator: &str) -> TestResult<ManagedProcess> {
+    let extra_env = format!(
+        "export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
+         export ZENOH_CONFIG_OVERRIDE='mode=\"client\";connect/endpoints=[\"{locator}\"]'"
+    );
+    start_autoware_impl(record_path, &extra_env)
+}
+
+fn start_autoware_impl(record_path: &Path, extra_env: &str) -> TestResult<ManagedProcess> {
     eprintln!("Starting Autoware replay from {:?}...", record_path);
-    let mut proc = replay_record(record_path)?;
+    let mut proc = replay_record_with_env(record_path, extra_env)?;
 
     // Wait for play_launch to finish starting all processes.
     // play_launch prints progress as it starts each node.
