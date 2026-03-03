@@ -1,6 +1,6 @@
 # Phase 8: Topic Parity
 
-**Status:** Not started
+**Status:** In progress (8.1a–f, 8.2a–d complete)
 **Depends on:** Phase 7 (integration testing, 7.1–7.3)
 **Goal:** The sentinel must publish every topic that the 7 replaced Autoware nodes publish,
 so `ros2 topic list` on modified Autoware + sentinel matches baseline Autoware exactly.
@@ -8,16 +8,19 @@ so `ros2 topic list` on modified Autoware + sentinel matches baseline Autoware e
 ## Description
 
 Phase 7.3 proved the sentinel can drive a simulated vehicle, but a topic diff between
-baseline Autoware (571 topics) and modified Autoware + sentinel (548 topics) reveals
-23 missing topics. These fall into two categories:
+baseline Autoware (555 topics) and modified Autoware + sentinel (531 topics) reveals
+24 missing topics. These fall into three categories:
 
-1. **Functional topics** (13) — consumed by other running Autoware nodes. Missing these
+1. **Functional topics** (14) — consumed by other running Autoware nodes. Missing these
    may cause degraded behavior, incomplete diagnostics, or failed mode transitions.
 2. **Debug/diagnostic topics** (10) — consumed only by RViz, logging, or monitoring.
    Missing these breaks the observability and debugging experience but doesn't affect
    autonomous driving.
+3. **Visibility** — zenoh-pico publishers don't emit ROS 2 liveliness tokens, so sentinel
+   topics don't appear in `ros2 topic list` even though data is flowing. This affects all
+   sentinel topics that lack an Autoware subscriber using rmw_zenoh_cpp.
 
-Both categories must be covered to achieve full behavioral parity with baseline Autoware.
+All categories must be covered to achieve full behavioral parity with baseline Autoware.
 
 ## Gap Analysis
 
@@ -32,7 +35,7 @@ Both categories must be covered to achieve full behavioral parity with baseline 
 | `/system/fail_safe/mrm_state`          | `MrmState`              | mrm_handler                       |
 | `/api/operation_mode/state`            | `OperationModeState`    | operation_mode_transition_manager |
 
-### Missing functional topics (13)
+### Missing functional topics (14)
 
 These are subscribed by other running Autoware nodes in the planning simulator.
 
@@ -51,6 +54,7 @@ These are subscribed by other running Autoware nodes in the planning simulator.
 | 11 | `/system/mrm/comfortable_stop/status`      | `MrmBehaviorStatus`       | mrm_comfortable_stop_operator              | mrm_handler                                           |
 | 12 | `/system/mrm/emergency_stop/status`        | `MrmBehaviorStatus`       | mrm_emergency_stop_operator                | mrm_handler                                           |
 | 13 | `/system/mrm/pull_over_manager/status`     | `MrmBehaviorStatus`       | mrm_pull_over_manager                      | mrm_handler                                           |
+| 14 | `/api/autoware/get/emergency`              | `Emergency`               | vehicle_cmd_gate (EmergencyInterface)      | autoware_iv_external_api_adaptor                      |
 
 **Note on self-loops:** Topics 5 and 8–12 are published by removed nodes and consumed by
 other removed nodes (e.g. shift_decider → vehicle_cmd_gate, mrm operators → mrm_handler).
@@ -64,22 +68,22 @@ These are consumed only by RViz, logging, or monitoring tools.
 
 | # | Topic | Message Type | Original Node |
 |---|-------|-------------|---------------|
-| 14 | `/control/autoware_operation_mode_transition_manager/debug_info` | `DebugInfo` (custom) | operation_mode_transition_manager |
-| 15 | `/control/command/control_cmd/debug/published_time` | `PublishedTime` | vehicle_cmd_gate |
-| 16 | `/control/control_validator/debug/marker` | `MarkerArray` | control_validator |
-| 17 | `/control/control_validator/output/markers` | `MarkerArray` | control_validator |
-| 18 | `/control/control_validator/validation_status` | `ControlValidatorStatus` | control_validator |
-| 19 | `/control/control_validator/virtual_wall` | `MarkerArray` | control_validator |
-| 20 | `/control/vehicle_cmd_gate/is_filter_activated` | `IsFilterActivated` | vehicle_cmd_gate |
-| 21 | `/control/vehicle_cmd_gate/is_filter_activated/flag` | `BoolStamped` | vehicle_cmd_gate |
-| 22 | `/control/vehicle_cmd_gate/is_filter_activated/marker` | `MarkerArray` | vehicle_cmd_gate |
-| 23 | `/control/vehicle_cmd_gate/is_filter_activated/marker_raw` | `MarkerArray` | vehicle_cmd_gate |
+| 15 | `/control/autoware_operation_mode_transition_manager/debug_info` | `DebugInfo` (custom) | operation_mode_transition_manager |
+| 16 | `/control/command/control_cmd/debug/published_time` | `PublishedTime` | vehicle_cmd_gate |
+| 17 | `/control/control_validator/debug/marker` | `MarkerArray` | control_validator |
+| 18 | `/control/control_validator/output/markers` | `MarkerArray` | control_validator |
+| 19 | `/control/control_validator/validation_status` | `ControlValidatorStatus` | control_validator |
+| 20 | `/control/control_validator/virtual_wall` | `MarkerArray` | control_validator |
+| 21 | `/control/vehicle_cmd_gate/is_filter_activated` | `IsFilterActivated` | vehicle_cmd_gate |
+| 22 | `/control/vehicle_cmd_gate/is_filter_activated/flag` | `BoolStamped` | vehicle_cmd_gate |
+| 23 | `/control/vehicle_cmd_gate/is_filter_activated/marker` | `MarkerArray` | vehicle_cmd_gate |
+| 24 | `/control/vehicle_cmd_gate/is_filter_activated/marker_raw` | `MarkerArray` | vehicle_cmd_gate |
 
 ## Work Items
 
 ### 8.1 — Functional topic publishers
 
-Add publishers for the 13 missing functional topics to the sentinel Linux binary.
+Add publishers for the 14 missing functional topics to the sentinel Linux binary.
 
 **Implementation approach:** Most of these topics carry data that the sentinel already
 computes internally. The work is wiring new publishers, not new algorithms.
@@ -118,15 +122,24 @@ computes internally. The work is wiring new publishers, not new algorithms.
   - Generate `IsStopped` (check package: autoware_adapi_v1_msgs or tier4_system_msgs)
   - Update `package.xml` and re-run `just generate` in sentinel_linux
 
-- [x] 8.1f — Integration test: verify all 13 functional topics present
-  - Extend `test_sentinel_replaces_autoware_nodes` or add new test
-  - Echo each functional topic, verify messages received
+- [x] 8.1f — Integration test: verify all sentinel topics present
+  - `test_sentinel_topic_parity` in `transport_smoke.rs`
+  - Starts zenohd + sentinel, checks all 30 topics via `ros2 topic echo --once`
+  - Runs in parallel for speed (~8s total)
+
+- [x] 8.1g — Emergency API topic (topic 14)
+  - Publish `Emergency` on `/api/autoware/get/emergency`
+  - Message type: `tier4_external_api_msgs::msg::Emergency` (stamp + bool emergency)
+  - Data: `emergency = true` when mrm_handler state is not NORMAL
+  - **Note:** `tier4_external_api_msgs` is already generated as a transitive dependency;
+    just needs adding as a direct dependency in `Cargo.toml`
+  - Update `test_sentinel_topic_parity` to include the 30th topic
 
 ### 8.2 — Debug/diagnostic topic publishers
 
 Add publishers for the 10 missing debug/diagnostic topics.
 
-- [x] 8.2a — Control validator debug topics (topics 16–19)
+- [x] 8.2a — Control validator debug topics (topics 17–20)
   - Publish `MarkerArray` on `/control/control_validator/debug/marker`
   - Publish `MarkerArray` on `/control/control_validator/output/markers`
   - Publish `ControlValidatorStatus` on `/control/control_validator/validation_status`
@@ -136,7 +149,7 @@ Add publishers for the 10 missing debug/diagnostic topics.
   - **Requires:** `visualization_msgs` MarkerArray generation
   - **Requires:** `ControlValidatorStatus` message generation (check package)
 
-- [x] 8.2b — Vehicle command gate debug topics (topics 20–23)
+- [x] 8.2b — Vehicle command gate debug topics (topics 21–24)
   - Publish `IsFilterActivated` on `/control/vehicle_cmd_gate/is_filter_activated`
   - Publish `BoolStamped` on `/control/vehicle_cmd_gate/is_filter_activated/flag`
   - Publish `MarkerArray` on `/control/vehicle_cmd_gate/is_filter_activated/marker`
@@ -144,7 +157,7 @@ Add publishers for the 10 missing debug/diagnostic topics.
   - **Requires:** `IsFilterActivated` message generation (check package)
   - **Requires:** `BoolStamped` message generation (check package)
 
-- [x] 8.2c — Remaining debug topics (topics 14–15)
+- [x] 8.2c — Remaining debug topics (topics 15–16)
   - Publish debug info on `/control/autoware_operation_mode_transition_manager/debug_info`
   - Publish `PublishedTime` on `/control/command/control_cmd/debug/published_time`
   - **Requires:** Identify message types for DebugInfo and PublishedTime
@@ -153,6 +166,32 @@ Add publishers for the 10 missing debug/diagnostic topics.
   - Run baseline Autoware, capture `ros2 topic list`
   - Run modified Autoware + sentinel, capture `ros2 topic list`
   - Assert: diff is empty (exact topic parity)
+
+### 8.3 — zenoh-pico liveliness tokens for `ros2 topic list` visibility
+
+**Problem:** zenoh-pico publishers don't emit ROS 2 graph discovery liveliness tokens.
+Sentinel topics ARE published and receivable (verified via `ros2 topic echo --once`),
+but they don't appear in `ros2 topic list` output. The original 6 sentinel topics only
+appear because other Autoware nodes subscribe to them via rmw_zenoh_cpp, which creates
+liveliness entries on the subscriber side.
+
+With 24 new topics that may not have Autoware subscribers, `ros2 topic list` will show
+them as missing even though data is flowing correctly.
+
+- [ ] 8.3a — Investigate nano-ros liveliness token support
+  - Determine if zenoh-pico supports liveliness declarations
+  - Check rmw_zenoh_cpp source for expected liveliness key format
+  - Assess feasibility of adding liveliness tokens to nano-ros publishers
+
+- [ ] 8.3b — Implement liveliness token emission in nano-ros
+  - Add liveliness declaration when creating a publisher
+  - Key format must match rmw_zenoh_cpp expectations for ros2 graph discovery
+  - **Note:** This is an upstream nano-ros change, not a sentinel change
+
+- [ ] 8.3c — Verify full `ros2 topic list` parity
+  - Run modified Autoware + sentinel
+  - Verify all 30 sentinel topics appear in `ros2 topic list`
+  - Diff against baseline: expect 0 missing topics
 
 ## Implementation Notes
 
@@ -181,10 +220,14 @@ the sentinel_linux `generated/` directory before generating new ones. Types like
 
 ### Executor capacity
 
-The sentinel currently uses `Executor::<_, 16, 16384>`. Adding 23 new publishers will
-require increasing the first const generic (max subscriptions + publishers + timers +
-services). Estimate: 6 existing + 23 new = 29 publishers + 5 subs + 1 timer + 1 service
-= 36. Bump to at least 48.
+The sentinel now uses `Executor::<_, 48, 16384>` (bumped from 16). Current usage:
+29 publishers + 5 subscribers + 1 timer + 1 service = 36 slots. Adding the Emergency
+topic (#14) will bring it to 30 publishers = 37 slots, well within the 48 limit.
+
+### ZPICO_MAX_PUBLISHERS
+
+zenoh-pico defaults to 8 max publishers. The sentinel now needs 29+ (will be 30).
+Build with `ZPICO_MAX_PUBLISHERS=32` env var (already set in justfile and test fixtures).
 
 ### no_std compatibility
 
@@ -196,18 +239,19 @@ Linux-only behind a `#[cfg(feature = "std")]` gate.
 ## Acceptance Criteria
 
 - [ ] `ros2 topic list` on modified Autoware + sentinel matches baseline exactly (0 diff)
-- [ ] All 13 functional topics carry meaningful data (not just empty messages)
-- [ ] MrmBehaviorStatus reflects actual operator state (AVAILABLE/OPERATING)
-- [ ] Engage topics reflect actual engagement state
-- [ ] VehicleEmergencyStamped reflects actual emergency state
-- [ ] Debug topics exist (content can be minimal/empty initially)
-- [ ] No regressions in existing integration tests
+- [x] All 13 functional topics (1–13) carry meaningful data (not just empty messages)
+- [x] MrmBehaviorStatus reflects actual operator state (AVAILABLE/OPERATING)
+- [x] Engage topics reflect actual engagement state
+- [x] VehicleEmergencyStamped reflects actual emergency state
+- [x] Debug topics exist (content can be minimal/empty initially)
+- [x] No regressions in existing integration tests
+- [x] `/api/autoware/get/emergency` publishes Emergency with correct state
 - [ ] Sentinel builds cleanly for both Linux and `thumbv7em-none-eabihf`
-- [ ] `just launch-autoware-modified` shows 0 topic diff vs baseline
+- [ ] `just launch-autoware-modified` shows 0 topic diff vs baseline (requires 8.3)
 
 ## References
 
-- Phase 7 topic diff: 23 missing topics (baseline 571 vs modified+sentinel 548)
+- Phase 7 topic diff: 24 missing topics (baseline 555 vs modified+sentinel 531)
 - Autoware source: `~/repos/autoware/1.5.0-ws/src/universe/autoware_universe/`
   - `control/autoware_vehicle_cmd_gate/` — 18 publishers total
   - `control/autoware_control_validator/` — 5 publishers

@@ -295,7 +295,7 @@ fn test_bidirectional_round_trip(zenohd_unique: ZenohRouter, sentinel_binary: Pa
 // Topic parity (Phase 8.1f + 8.2d)
 // =============================================================================
 
-/// All 29 topics that the sentinel must publish (6 original + 13 functional + 10 debug).
+/// All 30 topics that the sentinel must publish (6 original + 14 functional + 10 debug).
 const SENTINEL_TOPICS: &[(&str, &str)] = &[
     // Original 6
     ("/system/fail_safe/mrm_state", "autoware_adapi_v1_msgs/msg/MrmState"),
@@ -304,7 +304,7 @@ const SENTINEL_TOPICS: &[(&str, &str)] = &[
     ("/control/command/control_cmd", "autoware_control_msgs/msg/Control"),
     ("/control/command/turn_indicators_cmd", "autoware_vehicle_msgs/msg/TurnIndicatorsCommand"),
     ("/api/operation_mode/state", "autoware_adapi_v1_msgs/msg/OperationModeState"),
-    // Phase 8.1 — 13 functional topics
+    // Phase 8.1 — 14 functional topics
     ("/system/mrm/emergency_stop/status", "tier4_system_msgs/msg/MrmBehaviorStatus"),
     ("/system/mrm/comfortable_stop/status", "tier4_system_msgs/msg/MrmBehaviorStatus"),
     ("/system/mrm/pull_over_manager/status", "tier4_system_msgs/msg/MrmBehaviorStatus"),
@@ -318,6 +318,7 @@ const SENTINEL_TOPICS: &[(&str, &str)] = &[
     ("/control/vehicle_cmd_gate/operation_mode", "autoware_adapi_v1_msgs/msg/OperationModeState"),
     ("/api/autoware/get/engage", "autoware_vehicle_msgs/msg/Engage"),
     ("/autoware/engage", "autoware_vehicle_msgs/msg/Engage"),
+    ("/api/autoware/get/emergency", "tier4_external_api_msgs/msg/Emergency"),
     // Phase 8.2 — 10 debug/diagnostic topics
     ("/control/control_validator/debug/marker", "visualization_msgs/msg/MarkerArray"),
     ("/control/control_validator/output/markers", "visualization_msgs/msg/MarkerArray"),
@@ -331,7 +332,7 @@ const SENTINEL_TOPICS: &[(&str, &str)] = &[
     ("/control/command/control_cmd/debug/published_time", "autoware_internal_msgs/msg/PublishedTime"),
 ];
 
-/// Verify sentinel publishes all 29 topics (Phase 8.1f + 8.2d).
+/// Verify sentinel publishes all 30 topics (Phase 8.1f + 8.2d).
 ///
 /// Starts sentinel, then checks each topic in parallel using a bash script
 /// that runs `ros2 topic echo --once` with a timeout for each topic.

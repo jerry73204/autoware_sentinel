@@ -42,6 +42,7 @@ autoware_vehicle_msgs = { version = "*", default-features = false }
 geometry_msgs = { version = "*", default-features = false }
 nav_msgs = { version = "*", default-features = false }
 tier4_control_msgs = { version = "*", default-features = false }
+tier4_external_api_msgs = { version = "*", default-features = false }
 tier4_system_msgs = { version = "*", default-features = false }
 tier4_vehicle_msgs = { version = "*", default-features = false }
 visualization_msgs = { version = "*", default-features = false }

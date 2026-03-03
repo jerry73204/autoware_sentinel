@@ -67,6 +67,7 @@ use autoware_vehicle_msgs::msg::{
 };
 use geometry_msgs::msg::{Accel, Twist};
 use tier4_control_msgs::msg::{GateMode, IsStopped};
+use tier4_external_api_msgs::msg::Emergency;
 use tier4_system_msgs::msg::{MrmBehaviorStatus, OperationModeAvailability};
 use tier4_vehicle_msgs::msg::VehicleEmergencyStamped;
 
@@ -305,6 +306,8 @@ fn run() -> Result<(), NodeError> {
         // Phase 8.1d — Engagement (topics 1–2)
         engage_api_pub,
         engage_compat_pub,
+        // Phase 8.1g — Emergency API (topic 14)
+        emergency_api_pub,
         // Phase 8.2a — Control validator debug (topics 16–19)
         cv_debug_marker_pub,
         cv_output_markers_pub,
@@ -345,6 +348,8 @@ fn run() -> Result<(), NodeError> {
             // 8.1d — Engagement
             node.create_publisher::<Engage>("/api/autoware/get/engage")?,
             node.create_publisher::<Engage>("/autoware/engage")?,
+            // 8.1g — Emergency API
+            node.create_publisher::<Emergency>("/api/autoware/get/emergency")?,
             // 8.2a — Control validator debug
             node.create_publisher::<MarkerArray>("/control/control_validator/debug/marker")?,
             node.create_publisher::<MarkerArray>("/control/control_validator/output/markers")?,
@@ -621,6 +626,14 @@ fn run() -> Result<(), NodeError> {
                 .publish(&Engage {
                     stamp: Default::default(),
                     engage: engaged,
+                })
+                .ok();
+
+            // 8.1g — Emergency API
+            emergency_api_pub
+                .publish(&Emergency {
+                    stamp: Default::default(),
+                    emergency: island.mrm_handler.state() == MRM_STATE_OPERATING,
                 })
                 .ok();
 
