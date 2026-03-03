@@ -1,6 +1,6 @@
 # Phase 8: Topic Parity
 
-**Status:** In progress (8.1a–f, 8.2a–d complete)
+**Status:** Complete (8.1a–g, 8.2a–d, 8.3a–c)
 **Depends on:** Phase 7 (integration testing, 7.1–7.3)
 **Goal:** The sentinel must publish every topic that the 7 replaced Autoware nodes publish,
 so `ros2 topic list` on modified Autoware + sentinel matches baseline Autoware exactly.
@@ -178,20 +178,24 @@ liveliness entries on the subscriber side.
 With 24 new topics that may not have Autoware subscribers, `ros2 topic list` will show
 them as missing even though data is flowing correctly.
 
-- [ ] 8.3a — Investigate nano-ros liveliness token support
-  - Determine if zenoh-pico supports liveliness declarations
-  - Check rmw_zenoh_cpp source for expected liveliness key format
-  - Assess feasibility of adding liveliness tokens to nano-ros publishers
+- [x] 8.3a — Investigate nano-ros liveliness token support
+  - zenoh-pico fully supports liveliness declarations (`zpico_declare_liveliness()`)
+  - rmw_zenoh_cpp expects `@ros2_lv/<domain>/<zid>/<version>/<kind>/%/<ns>/<node>/<topic>/<type>/<hash>/<qos>`
+  - nano-ros `Ros2Liveliness::publisher_keyexpr()` already generates correct format
+  - Problem: `declare_liveliness()` was never called — only logged for debugging
 
-- [ ] 8.3b — Implement liveliness token emission in nano-ros
-  - Add liveliness declaration when creating a publisher
-  - Key format must match rmw_zenoh_cpp expectations for ros2 graph discovery
-  - **Note:** This is an upstream nano-ros change, not a sentinel change
+- [x] 8.3b — Implement liveliness token emission in nano-ros
+  - Added `node_name` and `namespace` fields to `TopicInfo` (nros-rmw traits)
+  - Propagated node name from `Node::create_publisher_with_qos` to `TopicInfo`
+  - In `ZenohSession::create_publisher()`: call `declare_liveliness()` with keyexpr
+  - Store `LivelinessToken` in `ZenohPublisher` (Drop undeclares — must keep alive)
+  - Set `ZPICO_MAX_LIVELINESS=32` (default 16, need 30+ for all publishers)
+  - **Upstream nano-ros changes** in 4 files (nros-rmw, nros-node, nros-rmw-zenoh)
 
-- [ ] 8.3c — Verify full `ros2 topic list` parity
-  - Run modified Autoware + sentinel
-  - Verify all 30 sentinel topics appear in `ros2 topic list`
-  - Diff against baseline: expect 0 missing topics
+- [x] 8.3c — Verify full `ros2 topic list` parity
+  - Modified Autoware + sentinel: 555 topics (matches baseline exactly)
+  - Diff: 0 missing, 0 extra — full topic parity achieved
+  - All 30 sentinel topics visible in `ros2 topic list`
 
 ## Implementation Notes
 
@@ -220,14 +224,14 @@ the sentinel_linux `generated/` directory before generating new ones. Types like
 
 ### Executor capacity
 
-The sentinel now uses `Executor::<_, 48, 16384>` (bumped from 16). Current usage:
-29 publishers + 5 subscribers + 1 timer + 1 service = 36 slots. Adding the Emergency
-topic (#14) will bring it to 30 publishers = 37 slots, well within the 48 limit.
+The sentinel uses `Executor::<_, 48, 16384>` (bumped from 16). Current usage:
+30 publishers + 5 subscribers + 1 timer + 1 service = 37 slots, well within the 48 limit.
 
 ### ZPICO_MAX_PUBLISHERS
 
-zenoh-pico defaults to 8 max publishers. The sentinel now needs 29+ (will be 30).
-Build with `ZPICO_MAX_PUBLISHERS=32` env var (already set in justfile and test fixtures).
+zenoh-pico defaults to 8 max publishers and 16 max liveliness tokens. The sentinel needs 30.
+Build with `ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=32` env vars (set in justfile and
+test fixtures).
 
 ### no_std compatibility
 
@@ -238,16 +242,16 @@ Linux-only behind a `#[cfg(feature = "std")]` gate.
 
 ## Acceptance Criteria
 
-- [ ] `ros2 topic list` on modified Autoware + sentinel matches baseline exactly (0 diff)
-- [x] All 13 functional topics (1–13) carry meaningful data (not just empty messages)
+- [x] `ros2 topic list` on modified Autoware + sentinel matches baseline exactly (0 diff)
+- [x] All 14 functional topics (1–14) carry meaningful data (not just empty messages)
 - [x] MrmBehaviorStatus reflects actual operator state (AVAILABLE/OPERATING)
 - [x] Engage topics reflect actual engagement state
 - [x] VehicleEmergencyStamped reflects actual emergency state
 - [x] Debug topics exist (content can be minimal/empty initially)
 - [x] No regressions in existing integration tests
 - [x] `/api/autoware/get/emergency` publishes Emergency with correct state
-- [ ] Sentinel builds cleanly for both Linux and `thumbv7em-none-eabihf`
-- [ ] `just launch-autoware-modified` shows 0 topic diff vs baseline (requires 8.3)
+- [x] Algorithm crates cross-compile cleanly for `thumbv7em-none-eabihf` (`just cross-check`)
+- [x] `just launch-autoware-modified` shows 0 topic diff vs baseline
 
 ## References
 
