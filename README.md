@@ -34,38 +34,75 @@ All of this happens in a deterministic 30 Hz control loop with no heap allocatio
 
 ## Architecture
 
-```
- Standard Autoware (modified)                 Autoware Sentinel (safety island)
- ┌─────────────────────────────┐              ┌─────────────────────────────────┐
- │                             │              │  Deterministic 30 Hz loop       │
- │  Perception                 │              │  #![no_std], zero allocation    │
- │  Planning                   │              │                                 │
- │  Localization               │  5 topics    │  Sense                          │
- │  Vehicle Interface          │ ──────────▶  │    VelocityConverter            │
- │  Trajectory Follower        │              │    StopFilter · Twist2Accel     │
- │  ...                        │              │                                 │
- │                             │              │  Decide                         │
- │  7 nodes removed,           │              │    HeartbeatWatchdog            │
- │  replaced by sentinel:      │  30 topics   │    MrmHandler                   │
- │    mrm_handler              │ ◀──────────  │    EmergencyStopOperator        │
- │    mrm_emergency_stop_op    │              │    ComfortableStopOperator      │
- │    mrm_comfortable_stop_op  │              │    ShiftDecider                 │
- │    vehicle_cmd_gate         │              │                                 │
- │    shift_decider            │              │  Act                            │
- │    control_validator        │              │    VehicleCmdGate               │
- │    op_mode_transition_mgr   │              │    ControlValidator             │
- │                             │              │    OpModeTransitionMgr          │
- ├─────────────────────────────┤              ├─────────────────────────────────┤
- │  rclcpp / rclpy             │              │  nros (Executor · Node)         │
- │  rmw_zenoh_cpp (zenoh-c)    │              │  nros-rmw (zenoh-pico)          │
- ├─────────────────────────────┤              ├─────────────────────────────────┤
- │  Linux                      │              │  Zephyr RTOS (Cortex-M)         │
- └──────────────┬──────────────┘              └────────────────┬────────────────┘
-                │              Zenoh Protocol                  │
-                └─────────────────┬────────────────────────────┘
-                            ┌─────┴─────┐
-                            │  zenohd   │
-                            └───────────┘
+```mermaid
+graph TB
+    subgraph autoware ["Standard Autoware — Linux"]
+        direction TB
+        subgraph aw_nodes ["Remaining Autoware Nodes"]
+            Perception
+            Planning
+            Localization
+            VehicleInterface["Vehicle Interface"]
+            TrajectoryFollower["Trajectory Follower"]
+        end
+        subgraph aw_removed ["7 nodes removed, replaced by sentinel"]
+            direction TB
+            mrm_handler
+            mrm_emergency_stop_op
+            mrm_comfortable_stop_op
+            vehicle_cmd_gate
+            shift_decider
+            control_validator
+            op_mode_transition_mgr
+        end
+        subgraph aw_stack ["Middleware Stack"]
+            rclcpp["rclcpp / rclpy"]
+            rmw_zenoh["rmw_zenoh_cpp (zenoh-c)"]
+        end
+    end
+
+    subgraph sentinel ["Autoware Sentinel — Zephyr RTOS"]
+        direction TB
+        subgraph loop ["Deterministic 30 Hz · #![no_std] · zero allocation"]
+            direction TB
+            subgraph sense ["Sense"]
+                VelocityConverter
+                StopFilter
+                Twist2Accel
+            end
+            subgraph decide ["Decide"]
+                HeartbeatWatchdog
+                MrmHandler
+                EmergencyStopOp["EmergencyStopOperator"]
+                ComfortableStopOp["ComfortableStopOperator"]
+                ShiftDecider
+            end
+            subgraph act ["Act"]
+                VehicleCmdGate
+                ControlValidator
+                OpModeTransitionMgr
+            end
+            sense --> decide --> act
+        end
+        subgraph sen_stack ["Middleware Stack"]
+            nros["nros (Executor · Node)"]
+            nros_rmw["nros-rmw (zenoh-pico)"]
+        end
+    end
+
+    subgraph transport ["Zenoh Protocol"]
+        zenohd
+    end
+
+    rmw_zenoh <-->|"Zenoh"| zenohd
+    nros_rmw <-->|"Zenoh"| zenohd
+
+    aw_nodes -->|"5 topics: VelocityReport,<br/>GearReport, Control,<br/>AutowareState, Heartbeat"| sense
+    act -->|"30 topics: Control, GearCmd,<br/>HazardLights, MrmState,<br/>Engage, Emergency, ..."| aw_nodes
+
+    style aw_removed fill:#fee,stroke:#c66,stroke-dasharray: 5 5
+    style loop fill:#efe,stroke:#6a6
+    style transport fill:#eef,stroke:#66c
 ```
 
 ### Topics between Autoware and Sentinel
