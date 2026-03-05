@@ -1,3 +1,6 @@
 [submodule "external/rmw_zenoh"]
 	path = external/rmw_zenoh_ws/src/rmw_zenoh
 	url = https://github.com/ros2/rmw_zenoh.git
+[submodule "external/zenoh"]
+	path = external/zenoh
+	url = https://github.com/eclipse-zenoh/zenoh.git
