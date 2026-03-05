@@ -34,28 +34,68 @@ All of this happens in a deterministic 30 Hz control loop with no heap allocatio
 
 ## Architecture
 
-```mermaid
-graph TD
-    A["Main Autoware Compute<br/>(Planning, Perception, Localization)"]
-    A -->|"Heartbeat + Control commands<br/>(Zenoh / CycloneDDS)"| B
-
-    subgraph Sentinel["Autoware Sentinel"]
-        B["VelocityReport"] --> C["StopFilter"]
-        C --> D["VelocityConverter"]
-        C --> E["Twist2Accel"]
-        F["Heartbeat"] --> G["MRM Handler"]
-        G --> H["EmergencyStop"]
-        G --> I["ComfortableStop"]
-        H --> J["VehicleCmdGate"]
-        I --> J
-        D --> J
-        E --> J
-        J --> K["ControlValidator"]
-        K --> L["OperationModeTransitionManager"]
-    end
-
-    L -->|"Control, Gear, Hazard commands"| M["Vehicle Interface"]
 ```
+ Standard Autoware (modified)                 Autoware Sentinel (safety island)
+ ┌─────────────────────────────┐              ┌─────────────────────────────────┐
+ │                             │              │  Deterministic 30 Hz loop       │
+ │  Perception                 │              │  #![no_std], zero allocation    │
+ │  Planning                   │              │                                 │
+ │  Localization               │  5 topics    │  Sense                          │
+ │  Vehicle Interface          │ ──────────▶  │    VelocityConverter            │
+ │  Trajectory Follower        │              │    StopFilter · Twist2Accel     │
+ │  ...                        │              │                                 │
+ │                             │              │  Decide                         │
+ │  7 nodes removed,           │              │    HeartbeatWatchdog            │
+ │  replaced by sentinel:      │  30 topics   │    MrmHandler                   │
+ │    mrm_handler              │ ◀──────────  │    EmergencyStopOperator        │
+ │    mrm_emergency_stop_op    │              │    ComfortableStopOperator      │
+ │    mrm_comfortable_stop_op  │              │    ShiftDecider                 │
+ │    vehicle_cmd_gate         │              │                                 │
+ │    shift_decider            │              │  Act                            │
+ │    control_validator        │              │    VehicleCmdGate               │
+ │    op_mode_transition_mgr   │              │    ControlValidator             │
+ │                             │              │    OpModeTransitionMgr          │
+ ├─────────────────────────────┤              ├─────────────────────────────────┤
+ │  rclcpp / rclpy             │              │  nros (Executor · Node)         │
+ │  rmw_zenoh_cpp (zenoh-c)    │              │  nros-rmw (zenoh-pico)          │
+ ├─────────────────────────────┤              ├─────────────────────────────────┤
+ │  Linux                      │              │  Zephyr RTOS (Cortex-M)         │
+ └──────────────┬──────────────┘              └────────────────┬────────────────┘
+                │              Zenoh Protocol                  │
+                └─────────────────┬────────────────────────────┘
+                            ┌─────┴─────┐
+                            │  zenohd   │
+                            └───────────┘
+```
+
+### Topics between Autoware and Sentinel
+
+Autoware publishes, sentinel subscribes (5 topics):
+
+| Topic | Message Type |
+|-------|-------------|
+| `/vehicle/status/velocity_status` | `VelocityReport` |
+| `/vehicle/status/gear_status` | `GearReport` |
+| `/control/trajectory_follower/control_cmd` | `Control` |
+| `/autoware/state` | `AutowareState` |
+| `/api/system/heartbeat` | `Heartbeat` |
+
+Sentinel publishes back to Autoware (30 topics):
+
+| Topic | Message Type | Source |
+|-------|-------------|--------|
+| `/control/command/control_cmd` | `Control` | VehicleCmdGate |
+| `/control/command/gear_cmd` | `GearCommand` | VehicleCmdGate |
+| `/control/command/hazard_lights_cmd` | `HazardLightsCommand` | MrmHandler |
+| `/control/command/turn_indicators_cmd` | `TurnIndicatorsCommand` | VehicleCmdGate |
+| `/control/command/emergency_cmd` | `VehicleEmergencyStamped` | MrmHandler |
+| `/system/fail_safe/mrm_state` | `MrmState` | MrmHandler |
+| `/api/operation_mode/state` | `OperationModeState` | OpModeTransitionMgr |
+| `/api/autoware/get/engage` | `Engage` | VehicleCmdGate |
+| `/api/autoware/get/emergency` | `Emergency` | MrmHandler |
+| ... | | +21 status/debug topics |
+
+Sentinel also serves `/api/operation_mode/change_to_autonomous` (service).
 
 ## Key Design Decisions
 
@@ -79,7 +119,8 @@ graph TD
 | 5     | Formal Verification (Kani + Verus)                | Complete    |
 | 6     | Zephyr Application (single binary)                | In progress |
 | 7     | Integration Testing (Autoware planning simulator) | In progress |
-| 8     | Topic Parity (match all baseline Autoware topics) | Not started |
+| 8     | Topic Parity (match all baseline Autoware topics) | Complete    |
+| 9     | Behavioral Verification (output correctness)      | Not started |
 
 See [`docs/roadmap/`](docs/roadmap/) for detailed phase documentation.
 
