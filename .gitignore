@@ -27,3 +27,11 @@ src/verification/target
 scripts/zephyr/downloads/
 scripts/zephyr/sdk/
 zephyr-workspace
+
+# Local rmw_zenoh_cpp build (colcon artifacts, not the submodule)
+external/rmw_zenoh_ws/build/
+external/rmw_zenoh_ws/install/
+external/rmw_zenoh_ws/log/
+
+# Local zenohd build
+external/zenoh/target/

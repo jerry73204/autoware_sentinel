@@ -1,0 +1,12 @@
+// Zenoh router config for zenohd.
+// Listens on tcp/localhost:7447 for local-only connections.
+// Set via ZENOH_ROUTER_CONFIG_URI in .envrc.
+{
+  mode: "router",
+  listen: {
+    endpoints: ["tcp/127.0.0.1:7447"],
+  },
+  scouting: {
+    multicast: { enabled: false },
+  },
+}

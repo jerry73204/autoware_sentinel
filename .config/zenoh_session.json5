@@ -1,0 +1,12 @@
+// Zenoh session config for rmw_zenoh_cpp clients.
+// All ROS 2 nodes connect to the zenohd router at tcp/localhost:7447.
+// Set via ZENOH_SESSION_CONFIG_URI in .envrc.
+{
+  mode: "client",
+  connect: {
+    endpoints: ["tcp/localhost:7447"],
+  },
+  scouting: {
+    multicast: { enabled: false },
+  },
+}
