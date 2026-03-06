@@ -229,8 +229,9 @@ The sentinel uses `Executor::<_, 48, 16384>` (bumped from 16). Current usage:
 
 ### ZPICO_MAX_PUBLISHERS
 
-zenoh-pico defaults to 8 max publishers and 16 max liveliness tokens. The sentinel needs 30.
-Build with `ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=32` env vars (set in justfile and
+zenoh-pico defaults to 8 max publishers and 16 max liveliness tokens. The sentinel declares
+liveliness tokens for all publishers, subscribers, and services (30 + 5 + 1 = 36 tokens).
+Build with `ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=48` env vars (set in justfile and
 test fixtures).
 
 ### no_std compatibility
@@ -251,7 +252,7 @@ Linux-only behind a `#[cfg(feature = "std")]` gate.
 - [x] No regressions in existing integration tests
 - [x] `/api/autoware/get/emergency` publishes Emergency with correct state
 - [x] Algorithm crates cross-compile cleanly for `thumbv7em-none-eabihf` (`just cross-check`)
-- [x] `just launch-autoware-modified` shows 0 topic diff vs baseline
+- [x] `just launch-autoware-sentinel` shows 0 topic diff vs baseline
 
 ## References
 
