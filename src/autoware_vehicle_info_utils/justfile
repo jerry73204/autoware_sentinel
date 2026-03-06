@@ -1,0 +1,17 @@
+# justfile for autoware_vehicle_info_utils
+
+# Default recipe - show available commands
+default:
+    @just --list
+
+# Build the crate
+build:
+    cargo build
+
+# Run tests
+test:
+    cargo test
+
+# Clean build artifacts
+clean:
+    rm -rf target

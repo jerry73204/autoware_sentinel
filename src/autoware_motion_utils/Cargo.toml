@@ -1,0 +1,17 @@
+[package]
+name = "autoware_motion_utils"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+autoware_interpolation = { path = "../autoware_interpolation" }
+autoware_universe_utils = { path = "../autoware_universe_utils" }
+geometry_msgs = { version = "*", default-features = false }
+autoware_planning_msgs = { version = "*", default-features = false }
+libm = "0.2"
+
+[features]
+default = []
+std = ["geometry_msgs/std", "autoware_planning_msgs/std"]
