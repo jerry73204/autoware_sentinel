@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 460" font-family="system-ui, -apple-system, sans-serif">
+  <g transform="translate(10, 10)">
+    <rect width="370" height="440" rx="6" fill="#fff8e0" stroke="#b08000" stroke-width="1.5"/>
+    <rect width="370" height="36" rx="6" fill="#b08000"/>
+    <rect y="30" width="370" height="6" fill="#b08000"/>
+    <text x="185" y="24" text-anchor="middle" font-size="15" font-weight="600" fill="white">Standard Autoware</text>
+    <g transform="translate(10, 46)">
+      <rect width="168" height="42" rx="4" fill="#fff3c4" stroke="#c89e20"/>
+      <text x="84" y="26" text-anchor="middle" font-size="12" fill="#333">Perception</text>
+      <rect x="180" width="170" height="42" rx="4" fill="#fff3c4" stroke="#c89e20"/>
+      <text x="265" y="26" text-anchor="middle" font-size="12" fill="#333">Planning</text>
+      <rect y="50" width="168" height="42" rx="4" fill="#fff3c4" stroke="#c89e20"/>
+      <text x="84" y="76" text-anchor="middle" font-size="12" fill="#333">Localization</text>
+      <rect x="180" y="50" width="170" height="42" rx="4" fill="#fff3c4" stroke="#c89e20"/>
+      <text x="265" y="76" text-anchor="middle" font-size="12" fill="#333">Vehicle IF</text>
+      <rect y="100" width="168" height="42" rx="4" fill="#fff3c4" stroke="#c89e20"/>
+      <text x="84" y="118" text-anchor="middle" font-size="12" fill="#333">Trajectory Follower</text>
+      <rect x="180" y="100" width="170" height="42" rx="4" fill="#fff3c4" stroke="#c89e20"/>
+      <text x="265" y="118" text-anchor="middle" font-size="12" fill="#333">Planning Simulator</text>
+    </g>
+    <g transform="translate(10, 198)">
+      <rect width="350" height="96" rx="4" fill="#ffe0e0" stroke="#c06060" stroke-dasharray="5 3"/>
+      <text x="175" y="18" text-anchor="middle" font-size="12" fill="#333" font-weight="600">Replaced by sentinel:</text>
+      <text x="175" y="36" text-anchor="middle" font-size="11" fill="#555">mrm_handler · vehicle_cmd_gate</text>
+      <text x="175" y="52" text-anchor="middle" font-size="11" fill="#555">shift_decider · control_validator</text>
+      <text x="175" y="68" text-anchor="middle" font-size="11" fill="#555">op_mode_transition_mgr</text>
+      <text x="175" y="84" text-anchor="middle" font-size="11" fill="#555">emergency / comfortable_stop_op</text>
+    </g>
+    <g transform="translate(10, 338)">
+      <rect width="350" height="44" rx="4" fill="#ffe082" stroke="#b08000"/>
+      <text x="175" y="20" text-anchor="middle" font-size="12" fill="#333">rclcpp / rclpy</text>
+      <text x="175" y="35" text-anchor="middle" font-size="11" fill="#555">rmw_zenoh_cpp (zenoh-c)</text>
+    </g>
+    <g transform="translate(10, 392)">
+      <rect width="350" height="36" rx="4" fill="#ffcc80" stroke="#b08000"/>
+      <text x="175" y="23" text-anchor="middle" font-size="12" fill="#333">Linux</text>
+    </g>
+  </g>
+  <g transform="translate(480, 10)">
+    <rect width="370" height="440" rx="6" fill="#e8f5e8" stroke="#2e7d32" stroke-width="1.5"/>
+    <rect width="370" height="36" rx="6" fill="#2e7d32"/>
+    <rect y="30" width="370" height="6" fill="#2e7d32"/>
+    <text x="185" y="24" text-anchor="middle" font-size="15" font-weight="600" fill="white">Autoware Sentinel</text>
+    <g transform="translate(10, 46)">
+      <rect width="350" height="258" rx="5" fill="#c8e6c9" stroke="#2e7d32" stroke-width="1.5" stroke-dasharray="6 3"/>
+      <text x="175" y="16" text-anchor="middle" font-size="11" fill="#2e7d32" font-style="italic">Single binary · 30 Hz · no_std</text>
+      <g transform="translate(10, 26)">
+        <rect width="330" height="58" rx="4" fill="#e8f5e8" stroke="#43a047"/>
+        <text x="165" y="18" text-anchor="middle" font-size="12" fill="#333" font-weight="600">Sense</text>
+        <text x="165" y="34" text-anchor="middle" font-size="11" fill="#555">VelocityConverter</text>
+        <text x="165" y="50" text-anchor="middle" font-size="11" fill="#555">StopFilter · Twist2Accel</text>
+      </g>
+      <g transform="translate(10, 92)">
+        <rect width="330" height="74" rx="4" fill="#e8f5e8" stroke="#43a047"/>
+        <text x="165" y="18" text-anchor="middle" font-size="12" fill="#333" font-weight="600">Decide</text>
+        <text x="165" y="34" text-anchor="middle" font-size="11" fill="#555">HeartbeatWatchdog</text>
+        <text x="165" y="50" text-anchor="middle" font-size="11" fill="#555">MrmHandler · ShiftDecider</text>
+        <text x="165" y="66" text-anchor="middle" font-size="11" fill="#555">EmergencyStopOp · ComfortableStopOp</text>
+      </g>
+      <g transform="translate(10, 174)">
+        <rect width="330" height="74" rx="4" fill="#e8f5e8" stroke="#43a047"/>
+        <text x="165" y="18" text-anchor="middle" font-size="12" fill="#333" font-weight="600">Act</text>
+        <text x="165" y="34" text-anchor="middle" font-size="11" fill="#555">VehicleCmdGate · ControlValidator</text>
+        <text x="165" y="50" text-anchor="middle" font-size="11" fill="#555">OpModeTransitionMgr</text>
+      </g>
+    </g>
+    <g transform="translate(10, 338)">
+      <rect width="350" height="44" rx="4" fill="#81c784" stroke="#2e7d32"/>
+      <text x="175" y="20" text-anchor="middle" font-size="12" fill="#333">nros (Executor · Node)</text>
+      <text x="175" y="35" text-anchor="middle" font-size="11" fill="#555">nros-rmw (zenoh-pico)</text>
+    </g>
+    <g transform="translate(10, 392)">
+      <rect width="350" height="36" rx="4" fill="#66bb6a" stroke="#2e7d32"/>
+      <text x="175" y="23" text-anchor="middle" font-size="12" fill="#333">Zephyr RTOS (Cortex-M)</text>
+    </g>
+  </g>
+  <text x="430" y="356" text-anchor="middle" font-size="11" fill="#1565c0" font-weight="600">Zenoh</text>
+  <text x="430" y="370" text-anchor="middle" font-size="11" fill="#1565c0" font-weight="600">Protocol</text>
+  <polygon points="388,384 396,379 396,389" fill="#1565c0"/>
+  <polygon points="472,384 464,379 464,389" fill="#1565c0"/>
+  <line x1="396" y1="384" x2="464" y2="384" stroke="#1565c0" stroke-width="2"/>
+</svg>
