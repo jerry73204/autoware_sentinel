@@ -19,7 +19,7 @@ log = "0.4"
 env_logger = "0.11"
 
 # nros unified API (std + POSIX + Zenoh + ROS Humble CDR compat)
-nros = { version = "*", default-features = false, features = ["std", "rmw-zenoh", "platform-posix", "ros-humble"] }
+nros = { version = "*", default-features = false, features = ["std", "rmw-zenoh", "platform-posix", "ros-humble", "param-services"] }
 
 # Algorithm crates (Phase 1–4)
 autoware_stop_filter = { path = "../autoware_stop_filter" }
@@ -37,6 +37,8 @@ autoware_operation_mode_transition_manager = { path = "../autoware_operation_mod
 # Controller node (Phase 10.5)
 autoware_trajectory_follower_node = { path = "../autoware_trajectory_follower_node" }
 autoware_trajectory_follower_base = { path = "../autoware_trajectory_follower_base" }
+autoware_mpc_lateral_controller = { path = "../autoware_mpc_lateral_controller" }
+autoware_pid_longitudinal_controller = { path = "../autoware_pid_longitudinal_controller" }
 autoware_vehicle_info_utils = { path = "../autoware_vehicle_info_utils" }
 
 # Message crates (resolved via [patch.crates-io] in .cargo/config.toml)

@@ -36,6 +36,8 @@
 //! ZENOH_LOCATOR=tcp/192.168.1.100:7447 RUST_LOG=info cargo run
 //! ```
 
+mod params;
+
 use std::cell::RefCell;
 use std::sync::OnceLock;
 use std::time::Instant;
@@ -44,7 +46,7 @@ use log::info;
 use nros::prelude::*;
 
 // Algorithm crates
-use autoware_control_validator::{ControlValidator, ValidatorParams};
+use autoware_control_validator::ControlValidator;
 use autoware_heartbeat_watchdog::HeartbeatWatchdog;
 use autoware_mrm_comfortable_stop_operator::ComfortableStopOperator;
 use autoware_mrm_emergency_stop_operator::EmergencyStopOperator;
@@ -53,10 +55,10 @@ use autoware_operation_mode_transition_manager::OperationModeTransitionManager;
 use autoware_shift_decider::ShiftDecider;
 use autoware_stop_filter::StopFilter;
 use autoware_trajectory_follower_base::{InputData, TrajectoryPoint};
-use autoware_trajectory_follower_node::{ControllerNode, ControllerNodeParams};
+use autoware_trajectory_follower_node::ControllerNode;
 use autoware_twist2accel::Twist2Accel;
+use autoware_vehicle_cmd_gate::VehicleCmdGate;
 use autoware_vehicle_cmd_gate::gate::SourceCommands;
-use autoware_vehicle_cmd_gate::{GateParams, VehicleCmdGate};
 use autoware_vehicle_velocity_converter::VehicleVelocityConverter;
 
 // Message types
@@ -182,18 +184,25 @@ fn with_island<R>(f: impl FnOnce(&mut SafetyIsland) -> R) -> R {
 }
 
 impl SafetyIsland {
-    fn new() -> Self {
-        let mut watchdog =
-            HeartbeatWatchdog::new(autoware_heartbeat_watchdog::Params { timeout_ms: 5000 });
+    fn new(p: params::SentinelParams) -> Self {
+        let mut watchdog = HeartbeatWatchdog::new(autoware_heartbeat_watchdog::Params {
+            timeout_ms: p.watchdog_timeout_ms,
+        });
         // Pre-seed with boot time to avoid immediate timeout.
         // Gives Autoware time to initialize and start sending heartbeats.
         watchdog.on_heartbeat(0);
 
         Self {
             // Sensing
-            velocity_converter: VehicleVelocityConverter::new(1.0, 0.2, 0.1),
-            stop_filter: StopFilter::new(0.1, 0.02),
-            twist2accel: Twist2Accel::new(autoware_twist2accel::Params::default()),
+            velocity_converter: VehicleVelocityConverter::new(
+                p.velocity_converter_speed_scale,
+                p.velocity_converter_stddev_vx,
+                p.velocity_converter_stddev_wz,
+            ),
+            stop_filter: StopFilter::new(p.stop_filter_vx_threshold, p.stop_filter_wz_threshold),
+            twist2accel: Twist2Accel::new(autoware_twist2accel::Params {
+                accel_lowpass_gain: p.twist2accel_lpf_gain,
+            }),
             prev_stamp: None,
             current_velocity: 0.0,
             is_stopped: true,
@@ -205,36 +214,23 @@ impl SafetyIsland {
             watchdog,
 
             // MRM chain
-            mrm_handler: MrmHandler::new(autoware_mrm_handler::Params::default()),
-            emergency_stop: EmergencyStopOperator::new(
-                autoware_mrm_emergency_stop_operator::Params::default(),
-            ),
-            comfortable_stop: ComfortableStopOperator::new(
-                autoware_mrm_comfortable_stop_operator::Params::default(),
-            ),
+            mrm_handler: MrmHandler::new(p.mrm_handler),
+            emergency_stop: EmergencyStopOperator::new(p.emergency_stop),
+            comfortable_stop: ComfortableStopOperator::new(p.comfortable_stop),
 
             // Command output
-            cmd_gate: VehicleCmdGate::new(GateParams {
-                filter: autoware_vehicle_cmd_gate::filter::FilterParams::default(),
-                arbiter: autoware_vehicle_cmd_gate::gate::ArbiterParams::default(),
-                heartbeat_timeout_ms: 5000,
-            }),
-            shift_decider: ShiftDecider::new(true),
+            cmd_gate: VehicleCmdGate::new(p.gate),
+            shift_decider: ShiftDecider::new(p.shift_decider_park_on_goal),
             auto_control: Control::default(),
             autoware_state: AutowareState::default(),
             gear_report: GearReport::default(),
 
             // Validation
-            control_validator: ControlValidator::new(ValidatorParams::default()),
-            op_mode_mgr: OperationModeTransitionManager::new(
-                autoware_operation_mode_transition_manager::Params::default(),
-            ),
+            control_validator: ControlValidator::new(p.control_validator),
+            op_mode_mgr: OperationModeTransitionManager::new(p.op_mode_mgr),
 
             // Trajectory follower
-            controller_node: ControllerNode::new(
-                ControllerNodeParams::default(),
-                autoware_vehicle_info_utils::VehicleInfo::default(),
-            ),
+            controller_node: ControllerNode::new(p.controller_node, p.vehicle_info),
             input_data: InputData::default(),
             has_trajectory: false,
             has_odometry: false,
@@ -390,11 +386,23 @@ fn main() {
 }
 
 fn run() -> Result<(), NodeError> {
-    // Initialize static state (before any callbacks can fire)
-    *ISLAND.0.borrow_mut() = Some(SafetyIsland::new());
-
     let config = ExecutorConfig::from_env().node_name("sentinel");
     let mut executor = Executor::<_, 52, 16384>::open(&config)?;
+
+    // Register ROS 2 parameter services (~/get_parameters, ~/set_parameters, etc.)
+    executor.register_parameter_services("/sentinel")?;
+    info!("Parameter services registered for /sentinel");
+
+    // Declare all algorithm parameters (read-only, Autoware-compatible defaults)
+    let server = executor
+        .params_mut()
+        .expect("parameter services not registered");
+    params::declare_parameters(server);
+    let sentinel_params = params::read_params(server);
+    info!("Declared {} parameters", server.len());
+
+    // Initialize static state (before any callbacks can fire)
+    *ISLAND.0.borrow_mut() = Some(SafetyIsland::new(sentinel_params));
 
     // --- Create publishers (node borrows executor, dropped after) ---
     let (

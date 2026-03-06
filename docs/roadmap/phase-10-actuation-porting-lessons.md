@@ -1,6 +1,6 @@
 # Phase 10: Actuation Porting & Infrastructure Improvements
 
-**Status:** In progress (10.1, 10.2, 10.3, 10.4, 10.5a, 10.5b, 10.5c complete)
+**Status:** In progress (10.1–10.5, 10.6 complete)
 **Depends on:** Phase 8 (topic parity), Phase 6 (Zephyr application)
 **Goal:** Port Autoware's trajectory follower algorithms (PID longitudinal + MPC lateral
 controllers) from ARM's actuation_porting project into Rust `#![no_std]` crates, and improve
@@ -274,43 +274,29 @@ constraints, read-only enforcement, and ROS 2 parameter services (`~/get_paramet
 `~/set_parameters`, etc.) gated by the `param-services` feature. Use this existing API
 to make sentinel algorithm parameters configurable.
 
-- [ ] 10.6a — Migrate existing sentinel constants to parameters
-  - Replace hardcoded constants in each algorithm crate with parameter lookups
-  - Use `ParameterBuilder` API with `.default()`, `.description()`, `.read_only()`
-  - Parameters declared at startup with same values as current constants
-  - Key constants per algorithm:
+- [x] 10.6a — Migrate existing sentinel constants to parameters
+  - Created `src/autoware_sentinel_linux/src/params.rs` with `declare_parameters()` and `read_params()`
+  - 56 read-only parameters declared via `ParameterBuilder::new(server, name).default().description().read_only()`
+  - `ro!` macro for concise declaration; `SentinelParams` struct aggregates all algorithm params
+  - `NROS_MAX_PARAMETERS=64` env var (default is 32) in justfile, test fixtures
 
-  | Algorithm                         | Constants to migrate                       |
-  |-----------------------------------|--------------------------------------------|
-  | stop_filter                       | `VX_THRESHOLD`, `WZ_THRESHOLD`             |
-  | shift_decider                     | `VEL_THRESHOLD`, `park_on_goal`            |
-  | emergency_stop_operator           | `TARGET_ACCEL`, `TARGET_JERK`              |
-  | comfortable_stop_operator         | `MIN_ACCEL`, jerk limits                   |
-  | mrm_handler                       | heartbeat timeouts, `use_comfortable_stop` |
-  | vehicle_cmd_gate                  | `VEL_LIM`, accel/jerk limits               |
-  | control_validator                 | distance/velocity/accel thresholds         |
-  | operation_mode_transition_manager | transition thresholds                      |
+- [x] 10.6b — Add new controller parameters
+  - PID gains (kp=1.0, ki=0.1, kd=0.0), acceleration/jerk limits, delay compensation
+  - MPC prediction horizon (50), dt (0.1s), steer_tau (0.27s), steering LPF, input delay, rate limit
+  - Vehicle info (10 params: wheel_base, max_steer, tread, overhangs, etc.)
+  - Controller node: ctrl_period, ego_nearest thresholds
 
-- [ ] 10.6b — Add new controller parameters
-  - PID gains (Kp, Ki, Kd) and limits for longitudinal controller
-  - MPC horizon, weights, vehicle model selection for lateral controller
-  - Control period, delay compensation time
-  - All declared as read-only via `ParameterBuilder::read_only()`
+- [x] 10.6c — Parameter equivalence audit
+  - Audited all 56 parameters against Autoware 1.5.0 YAML defaults
+  - Fixed 5 mismatches: `acc_lpf_gain` 0.8→0.97, `vel_lpf_gain` 0.8→0.9,
+    `acc_threshold` 2.0→1.5, `stable_check_duration` 3.0→0.1, `twist2accel.accel_lowpass_gain` 0.8→0.9
 
-- [ ] 10.6c — Parameter equivalence audit (overlaps with Phase 9.4)
-  - Extract Autoware default parameter values from launch YAML files
-  - Compare against sentinel parameter defaults
-  - Fix any mismatches
-  - Sources:
-    - `autoware-repo/src/universe/autoware_universe/control/autoware_trajectory_follower_node/`
-    - `autoware-repo/src/universe/autoware_universe/control/autoware_pid_longitudinal_controller/`
-    - `autoware-repo/src/universe/autoware_universe/control/autoware_mpc_lateral_controller/`
-
-- [ ] 10.6d — Verify `ros2 param list` / `ros2 param get` works
-  - Enable `param-services` feature in sentinel Linux binary
-  - Verify all parameters visible via `ros2 param list /sentinel`
-  - Verify `ros2 param get /sentinel <name>` returns correct values
-  - Add integration test
+- [x] 10.6d — Verify `ros2 param list` / `ros2 param get` works
+  - Enabled `param-services` feature in sentinel Cargo.toml
+  - Added `Executor::parameter::<T>()` convenience method to nano-ros API
+  - Added typed parameter types (`MandatoryParameter`, `OptionalParameter`, `ReadOnlyParameter`, etc.) to nano-ros prelude
+  - Integration tests: `test_sentinel_param_list` (56 params via `ros2 param list`)
+    and `test_sentinel_param_get` (spot-check 5 values via `ros2 param get`)
 
 ### 10.7 — Clock synchronization for Zephyr sentinel
 

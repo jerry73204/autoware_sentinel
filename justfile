@@ -43,11 +43,11 @@ build-zephyr:
 
 # Build Linux sentinel binary
 build-sentinel-linux:
-    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 cargo build
+    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 cargo build
 
 # Run Linux sentinel binary
 run-sentinel-linux:
-    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 RUST_LOG=info cargo run
+    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 RUST_LOG=info cargo run
 
 # Test all packages (unit tests)
 test:
@@ -106,7 +106,7 @@ launch-sentinel: build-sentinel-linux
     echo "=== Sentinel + zenohd ({{ locator }}) ==="
     parallel --line-buffer --halt now,done=1 --delay 2 ::: \
       '{{ zenohd }} --config {{ router_config }}' \
-      "RUST_LOG=info ZENOH_LOCATOR={{ locator }} ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 $SENTINEL"
+      "RUST_LOG=info ZENOH_LOCATOR={{ locator }} ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 $SENTINEL"
 
 # Launch filtered Autoware + sentinel (7 nodes replaced by sentinel binary)
 launch-autoware-sentinel: filter-autoware build-sentinel-linux
@@ -124,7 +124,7 @@ launch-autoware-sentinel: filter-autoware build-sentinel-linux
     parallel --line-buffer --halt now,done=1 --delay 2 ::: \
       '{{ zenohd }} --config {{ router_config }}' \
       "play_launch replay --input-file $FILTERED --web-addr 0.0.0.0:8080" \
-      "RUST_LOG=info ZENOH_LOCATOR={{ locator }} ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 $SENTINEL"
+      "RUST_LOG=info ZENOH_LOCATOR={{ locator }} ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 $SENTINEL"
 
 # Format all packages
 format:

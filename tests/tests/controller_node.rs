@@ -46,9 +46,7 @@ fn straight_trajectory_yaml(start_x: f64, n: usize, velocity: f64) -> String {
             points.push_str(", ");
         }
     }
-    format!(
-        "{{header: {{stamp: {{sec: 0, nanosec: 0}}, frame_id: map}}, points: [{points}]}}"
-    )
+    format!("{{header: {{stamp: {{sec: 0, nanosec: 0}}, frame_id: map}}, points: [{points}]}}")
 }
 
 /// Odometry YAML: ego at given (x, y) with yaw=0, moving at `vx` m/s.
@@ -67,9 +65,7 @@ fn odometry_yaml(x: f64, y: f64, vx: f64) -> String {
 
 /// SteeringReport YAML.
 fn steering_yaml(angle: f64) -> String {
-    format!(
-        "{{stamp: {{sec: 0, nanosec: 0}}, steering_tire_angle: {angle}}}"
-    )
+    format!("{{stamp: {{sec: 0, nanosec: 0}}, steering_tire_angle: {angle}}}")
 }
 
 /// AccelWithCovarianceStamped YAML.
@@ -175,10 +171,7 @@ fn test_controller_produces_output(zenohd_unique: ZenohRouter, sentinel_binary: 
     // 5. Verify we received control messages
     let msg_count = count_pattern(&output, "stamp:");
     eprintln!("Control messages received: {}", msg_count);
-    assert!(
-        msg_count > 0,
-        "No Control messages received from sentinel"
-    );
+    assert!(msg_count > 0, "No Control messages received from sentinel");
 
     // The sentinel always publishes control_cmd at 30 Hz (even without controller).
     // With the controller active, the PID should produce non-zero acceleration
@@ -345,10 +338,7 @@ fn test_controller_lateral_correction(zenohd_unique: ZenohRouter, sentinel_binar
 
     let msg_count = count_pattern(&output, "stamp:");
     eprintln!("Control messages received: {}", msg_count);
-    assert!(
-        msg_count > 0,
-        "No Control messages received from sentinel"
-    );
+    assert!(msg_count > 0, "No Control messages received from sentinel");
 
     // With 1m lateral offset, the MPC should command a non-zero steering angle
     let has_nonzero_steer = output.lines().any(|line| {
