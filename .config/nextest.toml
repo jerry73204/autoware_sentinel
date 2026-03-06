@@ -31,6 +31,16 @@ filter = "binary(planning_simulator)"
 test-group = "planning-simulator"
 slow-timeout = { period = "120s", terminate-after = 2 }
 
+# Controller node tests: heavyweight (zenohd + sentinel + multiple ROS 2 pubs),
+# run sequentially to avoid resource contention.
+[test-groups.controller-node]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(controller_node)"
+test-group = "controller-node"
+slow-timeout = { period = "60s", terminate-after = 2 }
+
 [profile.ci]
 slow-timeout = { period = "30s", terminate-after = 2 }
 fail-fast = true

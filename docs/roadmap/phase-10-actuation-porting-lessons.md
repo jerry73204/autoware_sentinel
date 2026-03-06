@@ -1,6 +1,6 @@
 # Phase 10: Actuation Porting & Infrastructure Improvements
 
-**Status:** In progress (10.1, 10.2 complete)
+**Status:** In progress (10.1, 10.2, 10.3, 10.4, 10.5a, 10.5b, 10.5c complete)
 **Depends on:** Phase 8 (topic parity), Phase 6 (Zephyr application)
 **Goal:** Port Autoware's trajectory follower algorithms (PID longitudinal + MPC lateral
 controllers) from ARM's actuation_porting project into Rust `#![no_std]` crates, and improve
@@ -161,116 +161,111 @@ This is the highest-value port — pure math, no external C library dependencies
 **Message dependencies:** `autoware_control_msgs`, `autoware_planning_msgs`,
 `autoware_vehicle_msgs`, `geometry_msgs`, `nav_msgs`
 
-### 10.3 — Trajectory follower base traits (`src/autoware_trajectory_follower_base/`)
+### 10.3 — Trajectory follower base traits (`src/autoware_trajectory_follower_base/`) ✓
 
 Port the trait definitions that both controllers implement.
 
-- [ ] `LateralControllerBase` trait with `fn run(&mut self, input: &InputData) -> LateralOutput`
-- [ ] `LongitudinalControllerBase` trait with `fn run(&mut self, input: &InputData) -> LongitudinalOutput`
-- [ ] `InputData` struct: trajectory, odometry, steering, acceleration, operation mode
-- [ ] `LateralOutput`: steering angle, steering rate, sync data
-- [ ] `LongitudinalOutput`: velocity, acceleration, jerk, sync data
-- [ ] `SyncData`: lateral-to-longitudinal and vice-versa data exchange
+**Status:** Complete — 6 tests, cross-compiles to thumbv7em-none-eabihf. Zero dependencies.
+
+- [x] `LateralControllerBase` trait with `fn run(&mut self, input: &InputData) -> LateralOutput`
+- [x] `LongitudinalControllerBase` trait with `fn run(&mut self, input: &InputData) -> LongitudinalOutput`
+- [x] `InputData` struct: trajectory (fixed-size array, 256 points), ego pose/velocity/steer/accel, operation mode
+- [x] `TrajectoryPoint` common type: x, y, z, yaw, velocity, acceleration, heading rate, wheel angle
+- [x] `LateralOutput`: steering_tire_angle, steering_tire_rotation_rate, LateralSyncData
+- [x] `LongitudinalOutput`: velocity, acceleration, LongitudinalSyncData
+- [x] `LateralSyncData` (is_steer_converged) and `LongitudinalSyncData` (reserved)
 
 **Source reference:**
 - `autoware_trajectory_follower_base/src/lateral_controller_base.cpp`
 - `autoware_trajectory_follower_base/src/longitudinal_controller_base.cpp`
-- ~285 LoC total
+- ~285 LoC C++ → ~190 LoC Rust
 
-### 10.4 — MPC lateral controller (`src/autoware_mpc_lateral_controller/`)
+### 10.4 — MPC lateral controller (`src/autoware_mpc_lateral_controller/`) ✓
 
 Port from `external/actuation_porting/actuation_module/src/autoware/autoware_mpc_lateral_controller/`.
 This is the most complex component due to matrix operations and QP solver dependency.
 
-- [ ] 10.4a — Vehicle models
-  - `BicycleKinematics` — simplified steering model (most commonly used)
-  - `BicycleDynamics` — physics-based with tire slip
-  - `BicycleKinematicsNoDelay` — simplified without steering delay
-  - State vector: [lateral_pos, yaw, velocity, steering_angle]
-  - Discrete-time linearization around reference trajectory
-  - Eigen matrix operations → use fixed-size arrays or `nalgebra` (behind feature flag)
-  - Source: `vehicle_model/` headers
+**Status:** Complete — 25 tests, cross-compiles to thumbv7em-none-eabihf. No external deps (pure `libm`).
 
-- [ ] 10.4b — MPC core solver
-  - Trajectory filtering and resampling
-  - State linearization around reference path
-  - Cost matrices Q (tracking error), R (steering effort) generation
-  - Prediction horizon: 5-10 steps, configurable
-  - QP problem formulation: `minimize u'Hu + f'u subject to lb <= u <= ub`
-  - Source: `mpc.cpp` (~877 LoC)
+- [x] 10.4a — Vehicle models (`src/vehicle_model.rs`)
+  - `VehicleModel` struct supporting 3 model types via enum dispatch
+  - `Kinematics` (dim_x=3): lateral error, yaw error, steering angle with first-order delay
+  - `KinematicsNoDelay` (dim_x=2): lateral error, yaw error (direct steering)
+  - `Dynamics` (dim_x=4): lateral error, lateral rate, yaw error, yaw rate (tire slip)
+  - Bilinear (Tustin) discretization for all models
+  - 6 unit tests
 
-- [ ] 10.4c — QP solver interface
-  - Trait: `QpSolverInterface` with `fn solve(H, f, A, lb, ub) -> Solution`
-  - Option A: **Unconstrained solver** (already exists in ARM code as fallback) — simplest,
-    solves `Hx = -f` directly, no inequality constraints. Suitable for safety island where
-    steering limits are enforced downstream.
-  - Option B: **OSQP FFI** — wrap the OSQP C library via `cc` crate. Full constrained QP.
-    Adds C dependency but proven solver.
-  - Option C: **Pure Rust QP** — use `osqp-rust` or implement simplified active-set solver.
-    Avoids C dependency but limited ecosystem for `no_std`.
-  - **Recommendation:** Start with unconstrained solver (Option A) for initial port, add
-    OSQP FFI (Option B) behind a feature flag for full fidelity.
-  - Source: `osqp_interface.cpp` (~870 LoC)
+- [x] 10.4b — MPC core solver (`src/mpc.rs`)
+  - N-step prediction matrix generation (Aex, Bex, Wex) built incrementally
+  - CB = Cex * Bex computed block-by-block (avoids full Cex storage)
+  - Cost matrices: diagonal Q (tracking), diagonal R1 (input), banded R2 (rate/acc)
+  - Feedforward reference: `u_ref = atan(wheelbase * curvature)`
+  - Steer rate, acceleration, and lateral jerk penalties in R2
+  - Input delay compensation via stored command buffer
+  - Velocity-adaptive weights (`heading_error_squared_vel`, `steering_input_squared_vel`)
+  - Low-curvature weight switching
+  - `MpcWorkspace` struct (~200KB) with all pre-allocated buffers
+  - `MAX_HORIZON = 50` (configurable at compile time for embedded)
+  - 7 unit tests
 
-- [ ] 10.4d — Steering predictor and offset estimator
-  - First-order steering dynamics prediction
-  - Self-calibration for steering bias
-  - Butterworth lowpass filters
-  - Source: `steering_predictor.cpp`, `steering_offset_estimator.hpp`
+- [x] 10.4c — QP solver (`src/mat.rs`)
+  - Unconstrained solver via Cholesky LLT decomposition: `u = -H⁻¹ * f`
+  - Small matrix inverse (up to 4×4) via Gaussian elimination with partial pivoting
+  - General matrix multiply, transpose-multiply, add, scale operations
+  - All operations on flat row-major `[f64]` slices — zero external deps
+  - 5 unit tests
 
-- [ ] 10.4e — MPC lateral controller orchestration
-  - Trajectory preprocessing (smoothing, curvature calculation)
-  - Control loop: linearize → build QP → solve → filter output
-  - 30+ configurable parameters
-  - Source: `mpc_lateral_controller.cpp` (~900 LoC)
+- [ ] 10.4d — Steering predictor and offset estimator (future)
+  - Not needed for initial safety island use case
 
-- [ ] 10.4f — Unit tests and verification
-  - Steering angle tracking convergence
-  - Lateral deviation bounded
-  - Vehicle model consistency (kinematics vs dynamics)
-  - QP solver correctness (known-solution inputs)
-  - Kani: bounded steering output, panic freedom
+- [x] 10.4e — MPC lateral controller orchestration (`src/lib.rs`)
+  - `MpcLateralController` with `run()` method
+  - Admissibility checks (position error, yaw error thresholds)
+  - Stop state handling (holds previous command, steer convergence check)
+  - Initial state construction for all 3 vehicle model types
+  - Output low-pass filtering
+  - 6 unit tests
 
-**Matrix operation strategy:**
+- [ ] 10.4f — Kani verification harnesses (future)
 
-The MPC controller uses Eigen3 for matrix operations (state: 4-6D, prediction matrices up to
-~50x50). Options for `no_std` Rust:
-
-1. **Fixed-size arrays** — manual matrix multiply for small dimensions. Works for vehicle
-   model (4x4), awkward for prediction horizon matrices.
-2. **`nalgebra`** — mature Rust linear algebra library. Supports `no_std` with `alloc` or
-   fixed-size matrices (`SMatrix`). Best option for prediction horizon matrices.
-3. **Custom fixed-horizon solver** — if prediction horizon is compile-time constant (e.g., 10),
-   all matrices are fixed-size and can use stack allocation.
-
-**Recommendation:** Use `nalgebra` with `no_std` + fixed-size `SMatrix<f64, N, N>` where
-N = prediction horizon (compile-time const generic). This avoids heap allocation while
-supporting the required matrix operations.
+**Matrix operation strategy (chosen):** Fixed-size flat arrays with manual row-major
+operations in `mat.rs`. No `nalgebra` dependency — keeps the crate dependency-free
+(only `libm`). Works well for the actual matrix sizes (up to 50×50 for QP, 4×4 for models).
+Workspace struct pre-allocates all buffers.
 
 ### 10.5 — Controller node wiring (`src/autoware_trajectory_follower_node/`)
 
 Wire the lateral and longitudinal controllers into a nano-ros node binary.
 
-- [ ] 10.5a — Controller node algorithm
-  - Subscribe to 5 input topics (trajectory, odometry, steering, acceleration, operation mode)
-  - Create `InputData` from subscribed messages
-  - Run lateral controller → `LateralOutput`
-  - Run longitudinal controller → `LongitudinalOutput`
-  - Sync controllers (lateral↔longitudinal data exchange)
-  - Publish combined `Control` command
-  - Timer at configurable period (30ms for Linux, 150ms for embedded)
-  - Source: `controller_node.cpp` (~535 LoC)
+- [x] 10.5a — Controller node algorithm ✓
+  - `ControllerNode` struct orchestrating MPC lateral + PID longitudinal
+  - `update(input, current_time)` → `Option<ControlOutput>` (None if < 3 traj points)
+  - Converts `InputData` → MPC's `LateralInput` (builds MpcTrajectory, computes lateral/yaw error)
+  - Converts `InputData` → PID's `ControlData` (nearest point, stop distance, pitch, shift)
+  - Sync: lateral `is_steer_converged` → longitudinal (blocks departure with large steer)
+  - `traj_utils` module: nearest-point search (3-pass soft constraints), signed arc length,
+    stop distance, pitch estimation, Menger curvature — all on `TrajectoryPoint` slices
+  - 14 tests (7 orchestration + 7 trajectory utils)
+  - Cross-compiles to thumbv7em-none-eabihf
+  - `.cargo/config.toml` reuses PID controller's generated message crates (no own generation)
+  - Source: `controller_node.cpp` (~535 LoC C++ → ~280 LoC Rust)
 
-- [ ] 10.5b — Integration into sentinel binary
-  - Add controller node to `src/autoware_sentinel_linux/src/main.rs`
-  - Wire subscriptions and publisher into existing executor
-  - Update `ZPICO_MAX_PUBLISHERS`, `ZPICO_MAX_SUBSCRIBERS`, `ZPICO_MAX_LIVELINESS`
+- [x] 10.5b — Integration into sentinel binary
+  - Added `ControllerNode` + `InputData` to `SafetyIsland` struct in `main.rs`
+  - 4 new subscriptions: trajectory, odometry, steering, acceleration
+  - `run_controller()` runs before MRM chain in 30 Hz timer, updates `auto_control`
+  - Executor slots increased from 48 → 52; `ZPICO_MAX_LIVELINESS=52` in justfile + test fixtures
+  - Inlined `quaternion_to_pitch_yaw()` to avoid cross-crate geometry_msgs type mismatch
 
-- [ ] 10.5c — Integration tests
-  - New test in `tests/tests/` verifying controller output
-  - Publish known trajectory + odometry, verify control command output
-  - Compare against ARM project's expected outputs in
-    `external/actuation_porting/actuation_module/test/rosbag_test/test_control_cmd_outputs/`
+- [x] 10.5c — Integration tests
+  - New test binary `tests/tests/controller_node.rs` (3 tests)
+  - `test_controller_produces_output`: publishes straight-line trajectory + odometry at rest,
+    verifies PID produces non-zero acceleration toward target velocity
+  - `test_controller_graceful_without_all_inputs`: verifies sentinel still publishes control_cmd
+    when controller has only partial inputs (no crash, graceful degradation)
+  - `test_controller_lateral_correction`: ego offset 1m from trajectory, verifies MPC produces
+    non-zero steering angle to correct lateral error
+  - Added `controller-node` test group in `.config/nextest.toml` (max-threads=1, 60s timeout)
 
 ### 10.6 — Sentinel parameter migration
 
@@ -285,16 +280,16 @@ to make sentinel algorithm parameters configurable.
   - Parameters declared at startup with same values as current constants
   - Key constants per algorithm:
 
-  | Algorithm | Constants to migrate |
-  |-----------|---------------------|
-  | stop_filter | `VX_THRESHOLD`, `WZ_THRESHOLD` |
-  | shift_decider | `VEL_THRESHOLD`, `park_on_goal` |
-  | emergency_stop_operator | `TARGET_ACCEL`, `TARGET_JERK` |
-  | comfortable_stop_operator | `MIN_ACCEL`, jerk limits |
-  | mrm_handler | heartbeat timeouts, `use_comfortable_stop` |
-  | vehicle_cmd_gate | `VEL_LIM`, accel/jerk limits |
-  | control_validator | distance/velocity/accel thresholds |
-  | operation_mode_transition_manager | transition thresholds |
+  | Algorithm                         | Constants to migrate                       |
+  |-----------------------------------|--------------------------------------------|
+  | stop_filter                       | `VX_THRESHOLD`, `WZ_THRESHOLD`             |
+  | shift_decider                     | `VEL_THRESHOLD`, `park_on_goal`            |
+  | emergency_stop_operator           | `TARGET_ACCEL`, `TARGET_JERK`              |
+  | comfortable_stop_operator         | `MIN_ACCEL`, jerk limits                   |
+  | mrm_handler                       | heartbeat timeouts, `use_comfortable_stop` |
+  | vehicle_cmd_gate                  | `VEL_LIM`, accel/jerk limits               |
+  | control_validator                 | distance/velocity/accel thresholds         |
+  | operation_mode_transition_manager | transition thresholds                      |
 
 - [ ] 10.6b — Add new controller parameters
   - PID gains (Kp, Ki, Kd) and limits for longitudinal controller

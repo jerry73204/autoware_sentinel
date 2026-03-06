@@ -1,0 +1,24 @@
+[package]
+name = "autoware_trajectory_follower_node"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+autoware_trajectory_follower_base = { path = "../autoware_trajectory_follower_base" }
+autoware_pid_longitudinal_controller = { path = "../autoware_pid_longitudinal_controller" }
+autoware_mpc_lateral_controller = { path = "../autoware_mpc_lateral_controller" }
+autoware_motion_utils = { path = "../autoware_motion_utils" }
+autoware_universe_utils = { path = "../autoware_universe_utils" }
+autoware_vehicle_info_utils = { path = "../autoware_vehicle_info_utils" }
+autoware_interpolation = { path = "../autoware_interpolation" }
+libm = "0.2"
+
+[features]
+default = []
+std = [
+    "autoware_trajectory_follower_base/std",
+    "autoware_pid_longitudinal_controller/std",
+    "autoware_mpc_lateral_controller/std",
+]

@@ -235,6 +235,13 @@ pub struct ControlData {
     pub nearest_yaw: f64,
 }
 
+/// Construct a `geometry_msgs::msg::Point` from x, y, z coordinates.
+///
+/// Convenience function for callers that don't depend on `geometry_msgs` directly.
+pub fn geometry_point(x: f64, y: f64, z: f64) -> Point {
+    Point { x, y, z }
+}
+
 // ---------------------------------------------------------------------------
 // Longitudinal output
 // ---------------------------------------------------------------------------

@@ -52,6 +52,8 @@ use autoware_mrm_handler::MrmHandler;
 use autoware_operation_mode_transition_manager::OperationModeTransitionManager;
 use autoware_shift_decider::ShiftDecider;
 use autoware_stop_filter::StopFilter;
+use autoware_trajectory_follower_base::{InputData, TrajectoryPoint};
+use autoware_trajectory_follower_node::{ControllerNode, ControllerNodeParams};
 use autoware_twist2accel::Twist2Accel;
 use autoware_vehicle_cmd_gate::gate::SourceCommands;
 use autoware_vehicle_cmd_gate::{GateParams, VehicleCmdGate};
@@ -61,11 +63,14 @@ use autoware_vehicle_velocity_converter::VehicleVelocityConverter;
 use autoware_adapi_v1_msgs::msg::{Heartbeat, MrmState, OperationModeState};
 use autoware_adapi_v1_msgs::srv::{ChangeOperationMode, ChangeOperationModeResponse};
 use autoware_control_msgs::msg::Control;
+use autoware_planning_msgs::msg::Trajectory;
 use autoware_system_msgs::msg::AutowareState;
 use autoware_vehicle_msgs::msg::{
-    Engage, GearCommand, GearReport, HazardLightsCommand, TurnIndicatorsCommand, VelocityReport,
+    Engage, GearCommand, GearReport, HazardLightsCommand, SteeringReport, TurnIndicatorsCommand,
+    VelocityReport,
 };
-use geometry_msgs::msg::{Accel, Twist};
+use geometry_msgs::msg::{Accel, AccelWithCovarianceStamped, Twist};
+use nav_msgs::msg::Odometry;
 use tier4_control_msgs::msg::{GateMode, IsStopped};
 use tier4_external_api_msgs::msg::Emergency;
 use tier4_system_msgs::msg::{MrmBehaviorStatus, OperationModeAvailability};
@@ -153,6 +158,13 @@ struct SafetyIsland {
     // --- Validation ---
     control_validator: ControlValidator,
     op_mode_mgr: OperationModeTransitionManager,
+
+    // --- Trajectory follower (Phase 10.5) ---
+    controller_node: ControllerNode,
+    input_data: InputData,
+    has_trajectory: bool,
+    has_odometry: bool,
+    has_steering: bool,
 }
 
 static ISLAND: SyncRefCell<Option<SafetyIsland>> = SyncRefCell(RefCell::new(None));
@@ -217,6 +229,16 @@ impl SafetyIsland {
             op_mode_mgr: OperationModeTransitionManager::new(
                 autoware_operation_mode_transition_manager::Params::default(),
             ),
+
+            // Trajectory follower
+            controller_node: ControllerNode::new(
+                ControllerNodeParams::default(),
+                autoware_vehicle_info_utils::VehicleInfo::default(),
+            ),
+            input_data: InputData::default(),
+            has_trajectory: false,
+            has_odometry: false,
+            has_steering: false,
         }
     }
 
@@ -250,6 +272,99 @@ impl SafetyIsland {
             self.accel_covariance = output.covariance;
         }
     }
+
+    /// Store a trajectory message for the controller node.
+    fn on_trajectory(&mut self, msg: &Trajectory) {
+        let n = msg
+            .points
+            .len()
+            .min(autoware_trajectory_follower_base::MAX_TRAJECTORY_POINTS);
+        for i in 0..n {
+            let pt = &msg.points[i];
+            let q = &pt.pose.orientation;
+            let (pitch, yaw) = quaternion_to_pitch_yaw(q.x, q.y, q.z, q.w);
+            self.input_data.trajectory[i] = TrajectoryPoint {
+                x: pt.pose.position.x,
+                y: pt.pose.position.y,
+                z: pt.pose.position.z,
+                yaw,
+                longitudinal_velocity_mps: pt.longitudinal_velocity_mps as f64,
+                lateral_velocity_mps: pt.lateral_velocity_mps as f64,
+                acceleration_mps2: pt.acceleration_mps2 as f64,
+                heading_rate_rps: pt.heading_rate_rps as f64,
+                front_wheel_angle_rad: pt.front_wheel_angle_rad as f64,
+            };
+            // Store pitch from first point for slope compensation
+            if i == 0 {
+                self.input_data.current_pose_pitch = pitch;
+            }
+        }
+        self.input_data.trajectory_len = n;
+        self.has_trajectory = true;
+    }
+
+    /// Store odometry for the controller node.
+    fn on_odometry(&mut self, msg: &Odometry) {
+        let pos = &msg.pose.pose.position;
+        let q = &msg.pose.pose.orientation;
+        let (pitch, yaw) = quaternion_to_pitch_yaw(q.x, q.y, q.z, q.w);
+
+        self.input_data.current_pose_x = pos.x;
+        self.input_data.current_pose_y = pos.y;
+        self.input_data.current_pose_z = pos.z;
+        self.input_data.current_pose_yaw = yaw;
+        self.input_data.current_pose_pitch = pitch;
+        self.input_data.current_velocity = msg.twist.twist.linear.x;
+        self.has_odometry = true;
+    }
+
+    /// Store steering angle for the controller node.
+    fn on_steering(&mut self, msg: &SteeringReport) {
+        self.input_data.current_steer = msg.steering_tire_angle as f64;
+        self.has_steering = true;
+    }
+
+    /// Store acceleration for the controller node.
+    fn on_acceleration(&mut self, msg: &AccelWithCovarianceStamped) {
+        self.input_data.current_accel = msg.accel.accel.linear.x;
+    }
+
+    /// Run the trajectory follower controller and update auto_control.
+    fn run_controller(&mut self, current_time_s: f64) {
+        if !self.has_trajectory || !self.has_odometry || !self.has_steering {
+            return; // Not enough data yet — use external control_cmd
+        }
+
+        // Operation mode: always autonomous in sentinel
+        self.input_data.is_autonomous = true;
+        self.input_data.is_in_transition = false;
+
+        if let Some(output) = self
+            .controller_node
+            .update(&self.input_data, current_time_s)
+        {
+            self.auto_control.lateral.steering_tire_angle =
+                output.lateral.steering_tire_angle as f32;
+            self.auto_control.lateral.steering_tire_rotation_rate =
+                output.lateral.steering_tire_rotation_rate as f32;
+            self.auto_control.longitudinal.velocity = output.longitudinal.velocity as f32;
+            self.auto_control.longitudinal.acceleration = output.longitudinal.acceleration as f32;
+        }
+    }
+}
+
+/// Extract (pitch, yaw) from quaternion components.
+fn quaternion_to_pitch_yaw(x: f64, y: f64, z: f64, w: f64) -> (f64, f64) {
+    let sinp = 2.0 * (w * y - z * x);
+    let pitch = if sinp.abs() >= 1.0 {
+        f64::copysign(std::f64::consts::FRAC_PI_2, sinp)
+    } else {
+        sinp.asin()
+    };
+    let siny_cosp = 2.0 * (w * z + x * y);
+    let cosy_cosp = 1.0 - 2.0 * (y * y + z * z);
+    let yaw = siny_cosp.atan2(cosy_cosp);
+    (pitch, yaw)
 }
 
 /// Monotonic clock in milliseconds since process start.
@@ -279,7 +394,7 @@ fn run() -> Result<(), NodeError> {
     *ISLAND.0.borrow_mut() = Some(SafetyIsland::new());
 
     let config = ExecutorConfig::from_env().node_name("sentinel");
-    let mut executor = Executor::<_, 48, 16384>::open(&config)?;
+    let mut executor = Executor::<_, 52, 16384>::open(&config)?;
 
     // --- Create publishers (node borrows executor, dropped after) ---
     let (
@@ -338,13 +453,17 @@ fn run() -> Result<(), NodeError> {
             // 8.1b — MRM handler emergency outputs
             node.create_publisher::<GearCommand>("/system/emergency/gear_cmd")?,
             node.create_publisher::<HazardLightsCommand>("/system/emergency/hazard_lights_cmd")?,
-            node.create_publisher::<TurnIndicatorsCommand>("/system/emergency/turn_indicators_cmd")?,
+            node.create_publisher::<TurnIndicatorsCommand>(
+                "/system/emergency/turn_indicators_cmd",
+            )?,
             // 8.1c — Vehicle command gate additional
             node.create_publisher::<VehicleEmergencyStamped>("/control/command/emergency_cmd")?,
             node.create_publisher::<GateMode>("/control/gate_mode_cmd")?,
             node.create_publisher::<GearCommand>("/control/shift_decider/gear_cmd")?,
             node.create_publisher::<IsStopped>("/control/vehicle_cmd_gate/is_stopped")?,
-            node.create_publisher::<OperationModeState>("/control/vehicle_cmd_gate/operation_mode")?,
+            node.create_publisher::<OperationModeState>(
+                "/control/vehicle_cmd_gate/operation_mode",
+            )?,
             // 8.1d — Engagement
             node.create_publisher::<Engage>("/api/autoware/get/engage")?,
             node.create_publisher::<Engage>("/autoware/engage")?,
@@ -353,16 +472,30 @@ fn run() -> Result<(), NodeError> {
             // 8.2a — Control validator debug
             node.create_publisher::<MarkerArray>("/control/control_validator/debug/marker")?,
             node.create_publisher::<MarkerArray>("/control/control_validator/output/markers")?,
-            node.create_publisher::<ControlValidatorStatus>("/control/control_validator/validation_status")?,
+            node.create_publisher::<ControlValidatorStatus>(
+                "/control/control_validator/validation_status",
+            )?,
             node.create_publisher::<MarkerArray>("/control/control_validator/virtual_wall")?,
             // 8.2b — Vehicle cmd gate filter debug
-            node.create_publisher::<IsFilterActivated>("/control/vehicle_cmd_gate/is_filter_activated")?,
-            node.create_publisher::<BoolStamped>("/control/vehicle_cmd_gate/is_filter_activated/flag")?,
-            node.create_publisher::<MarkerArray>("/control/vehicle_cmd_gate/is_filter_activated/marker")?,
-            node.create_publisher::<MarkerArray>("/control/vehicle_cmd_gate/is_filter_activated/marker_raw")?,
+            node.create_publisher::<IsFilterActivated>(
+                "/control/vehicle_cmd_gate/is_filter_activated",
+            )?,
+            node.create_publisher::<BoolStamped>(
+                "/control/vehicle_cmd_gate/is_filter_activated/flag",
+            )?,
+            node.create_publisher::<MarkerArray>(
+                "/control/vehicle_cmd_gate/is_filter_activated/marker",
+            )?,
+            node.create_publisher::<MarkerArray>(
+                "/control/vehicle_cmd_gate/is_filter_activated/marker_raw",
+            )?,
             // 8.2c — Remaining debug
-            node.create_publisher::<OperationModeTransitionManagerDebug>("/control/autoware_operation_mode_transition_manager/debug_info")?,
-            node.create_publisher::<PublishedTime>("/control/command/control_cmd/debug/published_time")?,
+            node.create_publisher::<OperationModeTransitionManagerDebug>(
+                "/control/autoware_operation_mode_transition_manager/debug_info",
+            )?,
+            node.create_publisher::<PublishedTime>(
+                "/control/command/control_cmd/debug/published_time",
+            )?,
         )
     };
 
@@ -398,6 +531,25 @@ fn run() -> Result<(), NodeError> {
     info!("Subscribed: control_cmd, autoware_state, gear_status");
 
     // ====================================================================
+    // Trajectory follower input subscriptions (Phase 10.5)
+    // ====================================================================
+    executor
+        .add_subscription::<Trajectory, _>("/planning/scenario_planning/trajectory", |msg| {
+            with_island(|island| island.on_trajectory(msg))
+        })?;
+    executor.add_subscription::<Odometry, _>("/localization/kinematic_state", |msg| {
+        with_island(|island| island.on_odometry(msg))
+    })?;
+    executor.add_subscription::<SteeringReport, _>("/vehicle/status/steering_status", |msg| {
+        with_island(|island| island.on_steering(msg))
+    })?;
+    executor
+        .add_subscription::<AccelWithCovarianceStamped, _>("/localization/acceleration", |msg| {
+            with_island(|island| island.on_acceleration(msg))
+        })?;
+    info!("Subscribed: trajectory, odometry, steering, acceleration (controller inputs)");
+
+    // ====================================================================
     // Engagement flow: ChangeOperationMode service (always returns success)
     // ====================================================================
     executor.add_service::<ChangeOperationMode, _>(
@@ -421,6 +573,9 @@ fn run() -> Result<(), NodeError> {
     executor.add_timer(TimerDuration::from_millis(33), move || {
         with_island(|island| {
             let now = now_ms();
+
+            // ── Trajectory follower (Phase 10.5) ─────────────────────
+            island.run_controller(now as f64 / 1000.0);
 
             // ── MRM chain ──────────────────────────────────────────────
 

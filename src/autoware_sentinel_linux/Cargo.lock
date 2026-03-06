@@ -160,6 +160,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "autoware_interpolation"
+version = "0.1.0"
+dependencies = [
+ "geometry_msgs",
+ "libm",
+]
+
+[[package]]
+name = "autoware_motion_utils"
+version = "0.1.0"
+dependencies = [
+ "autoware_interpolation",
+ "autoware_planning_msgs",
+ "autoware_universe_utils",
+ "geometry_msgs",
+ "libm",
+]
+
+[[package]]
+name = "autoware_mpc_lateral_controller"
+version = "0.1.0"
+dependencies = [
+ "autoware_vehicle_info_utils",
+ "libm",
+]
+
+[[package]]
 name = "autoware_mrm_comfortable_stop_operator"
 version = "0.1.0"
 dependencies = [
@@ -206,6 +233,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "autoware_pid_longitudinal_controller"
+version = "0.1.0"
+dependencies = [
+ "autoware_control_msgs",
+ "autoware_interpolation",
+ "autoware_motion_utils",
+ "autoware_planning_msgs",
+ "autoware_universe_utils",
+ "autoware_vehicle_info_utils",
+ "autoware_vehicle_msgs",
+ "geometry_msgs",
+ "libm",
+ "nav_msgs",
+]
+
+[[package]]
+name = "autoware_planning_msgs"
+version = "1.11.0"
+dependencies = [
+ "autoware_common_msgs",
+ "builtin_interfaces",
+ "geometry_msgs",
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+ "std_msgs",
+ "unique_identifier_msgs",
+]
+
+[[package]]
 name = "autoware_sentinel_linux"
 version = "0.1.0"
 dependencies = [
@@ -221,12 +278,16 @@ dependencies = [
  "autoware_mrm_handler",
  "autoware_operation_mode_transition_manager 0.1.0",
  "autoware_operation_mode_transition_manager 0.48.0",
+ "autoware_planning_msgs",
  "autoware_shift_decider",
  "autoware_stop_filter",
  "autoware_system_msgs",
+ "autoware_trajectory_follower_base",
+ "autoware_trajectory_follower_node",
  "autoware_twist2accel",
  "autoware_vehicle_cmd_gate 0.1.0",
  "autoware_vehicle_cmd_gate 0.48.0",
+ "autoware_vehicle_info_utils",
  "autoware_vehicle_msgs",
  "autoware_vehicle_velocity_converter",
  "env_logger",
@@ -271,11 +332,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "autoware_trajectory_follower_base"
+version = "0.1.0"
+
+[[package]]
+name = "autoware_trajectory_follower_node"
+version = "0.1.0"
+dependencies = [
+ "autoware_interpolation",
+ "autoware_motion_utils",
+ "autoware_mpc_lateral_controller",
+ "autoware_pid_longitudinal_controller",
+ "autoware_trajectory_follower_base",
+ "autoware_universe_utils",
+ "autoware_vehicle_info_utils",
+ "libm",
+]
+
+[[package]]
 name = "autoware_twist2accel"
 version = "0.1.0"
 dependencies = [
  "geometry_msgs",
  "nav_msgs",
+]
+
+[[package]]
+name = "autoware_universe_utils"
+version = "0.1.0"
+dependencies = [
+ "geometry_msgs",
+ "libm",
 ]
 
 [[package]]
@@ -296,6 +383,13 @@ dependencies = [
  "heapless",
  "nros-core",
  "nros-serdes",
+]
+
+[[package]]
+name = "autoware_vehicle_info_utils"
+version = "0.1.0"
+dependencies = [
+ "libm",
 ]
 
 [[package]]
@@ -1312,10 +1406,6 @@ version = "1.12.0"
 
 [[patch.unused]]
 name = "autoware_perception_msgs"
-version = "1.11.0"
-
-[[patch.unused]]
-name = "autoware_planning_msgs"
 version = "1.11.0"
 
 [[patch.unused]]
