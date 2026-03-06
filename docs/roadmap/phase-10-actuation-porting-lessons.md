@@ -1,6 +1,6 @@
 # Phase 10: Actuation Porting & Infrastructure Improvements
 
-**Status:** In progress (10.1 complete)
+**Status:** In progress (10.1, 10.2 complete)
 **Depends on:** Phase 8 (topic parity), Phase 6 (Zephyr application)
 **Goal:** Port Autoware's trajectory follower algorithms (PID longitudinal + MPC lateral
 controllers) from ARM's actuation_porting project into Rust `#![no_std]` crates, and improve
@@ -112,56 +112,54 @@ Port the supporting math/geometry libraries that both controllers depend on.
 - [x] Default values from Autoware's sample vehicle config
 - [x] 5 unit tests
 
-### 10.2 — PID longitudinal controller (`src/autoware_pid_longitudinal_controller/`)
+### 10.2 — PID longitudinal controller (`src/autoware_pid_longitudinal_controller/`) ✓
 
 Port from `external/actuation_porting/actuation_module/src/autoware/autoware_pid_longitudinal_controller/`.
 This is the highest-value port — pure math, no external C library dependencies.
 
-- [ ] 10.2a — PID controller core
-  - Standard PID: `output = Kp*error + Ki*integral + Kd*derivative`
-  - Anti-windup (integral clamping)
-  - Derivative filtering
-  - ~110 LoC in C++, straightforward port
-  - Source: `pid.cpp`
+**Status:** Complete — 37 tests, cross-compiles to thumbv7em-none-eabihf.
 
-- [ ] 10.2b — Smooth stop algorithm
-  - Velocity history tracking (ring buffer, ~20-50 samples)
-  - Time-to-stop estimation via linear regression
-  - Deceleration profile: `a = -v^2 / (2 * distance)`
-  - State: weak/strong braking based on distance to stop
-  - Source: `smooth_stop.cpp` (~200 LoC)
+- [x] 10.2a — PID controller core (`src/pid.rs`)
+  - Standard PID with anti-windup (integral clamping) and per-component limits
+  - `PidGains`, `PidLimits`, `PidContributions` structs
+  - 8 unit tests
 
-- [ ] 10.2c — Lowpass filter
-  - First-order Butterworth IIR filter
-  - `y[n] = (1-alpha)*y[n-1] + alpha*x[n]`
-  - Source: `lowpass_filter.hpp`
+- [x] 10.2b — Smooth stop algorithm (`src/smooth_stop.rs`)
+  - Ring buffer velocity history (64 samples)
+  - Linear regression time-to-stop estimation
+  - Kinematic deceleration: `a = -v²/(2d)` with clamping
+  - Weak/strong braking phases based on distance and velocity
+  - 6 unit tests
 
-- [ ] 10.2d — Longitudinal controller state machine
+- [x] 10.2c — Lowpass filter (`src/lowpass_filter.rs`)
+  - First-order IIR: `y[n] = gain*y[n-1] + (1-gain)*x[n]`
+  - 4 unit tests
+
+- [x] 10.2d — Longitudinal controller state machine (`src/lib.rs`)
   - States: DRIVE → STOPPING → STOPPED → EMERGENCY
-  - DRIVE: PID control with slope compensation, jerk limiting
-  - STOPPING: Smooth stop with spline-fitted deceleration
-  - STOPPED: Zero velocity, configurable braking force
-  - EMERGENCY: Hard braking (-5.0 m/s²)
-  - Delay compensation (predicts state after control latency)
-  - 20+ configurable parameters via `ParameterServer`
-  - Source: `pid_longitudinal_controller.cpp` (~900 LoC)
+  - DRIVE: PID velocity feedback + feedforward scaling + brake keeping
+  - STOPPING: SmoothStop algorithm with velocity history
+  - STOPPED: Configurable braking force (-3.4 m/s²)
+  - EMERGENCY: Hard braking (-5.0 m/s²) with jerk limit
+  - Slope compensation (pitch-based gravity compensation, configurable source)
+  - Jerk limiting (asymmetric rate limiter on acceleration output)
+  - Integration gating (velocity threshold + stuck detection)
+  - Steer convergence check (blocks departure until lateral converged)
+  - 30+ configurable parameters via `ControllerParams`
 
-- [ ] 10.2e — Unit tests
-  - PID convergence to setpoint
-  - State machine transitions (DRIVE→STOPPING→STOPPED)
-  - Emergency braking activation
-  - Slope compensation correctness
+- [x] 10.2e — Unit tests (19 controller-level tests)
+  - State machine transitions (Drive→Stopping→Stopped, Emergency→Stopped)
+  - Emergency on overshoot
+  - Steer convergence blocking
+  - Slope compensation (uphill, reverse, pitch clamping)
   - Jerk limit enforcement
-  - NaN input safety (apply same `!(x >= threshold)` pattern)
+  - Stop distance calculation
+  - Trajectory pitch computation
 
-- [ ] 10.2f — Kani verification harnesses
-  - Panic freedom for PID calculation
-  - Bounded output (acceleration within configured limits)
-  - State machine valid transitions only
-  - Smooth stop convergence
+- [ ] 10.2f — Kani verification harnesses (future)
 
-**Message dependencies:** `autoware_control_msgs`, `nav_msgs`, `geometry_msgs`,
-`autoware_vehicle_msgs`, `autoware_adapi_v1_msgs`
+**Message dependencies:** `autoware_control_msgs`, `autoware_planning_msgs`,
+`autoware_vehicle_msgs`, `geometry_msgs`, `nav_msgs`
 
 ### 10.3 — Trajectory follower base traits (`src/autoware_trajectory_follower_base/`)
 
