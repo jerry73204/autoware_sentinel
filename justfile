@@ -166,3 +166,32 @@ build-zenohd:
 
 # Run all verification
 verify: verify-kani verify-verus
+
+# Setup TAP network for Zephyr native_sim (requires sudo)
+setup-tap-network:
+    sudo scripts/zephyr/setup-network.sh
+
+# Tear down TAP network (requires sudo)
+teardown-tap-network:
+    sudo scripts/zephyr/setup-network.sh --down
+
+# Run Zephyr sentinel (native_sim) with zenohd on bridge network
+run-sentinel-zephyr: build-zephyr
+    #!/usr/bin/env bash
+    set -eo pipefail
+    ZEPHYR_BIN="{{ workspace_dir }}/build/sentinel/zephyr/zephyr.exe"
+    if [ ! -f "$ZEPHYR_BIN" ]; then
+        echo "Error: Zephyr binary not found at $ZEPHYR_BIN"
+        echo "Run: just build-zephyr"
+        exit 1
+    fi
+
+    echo "=== Zephyr Sentinel + zenohd (bridge: 192.0.2.2:7447) ==="
+    echo "NOTE: TAP network must be set up first: just setup-tap-network"
+    parallel --line-buffer --halt now,done=1 --delay 2 ::: \
+      '{{ zenohd }} --listen tcp/0.0.0.0:7447' \
+      "$ZEPHYR_BIN"
+
+# Run Zephyr native_sim integration tests (Phase 7.4)
+test-zephyr:
+    cd tests && cargo nextest run -E 'binary(zephyr_native_sim)'

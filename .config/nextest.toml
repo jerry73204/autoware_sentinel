@@ -41,6 +41,16 @@ filter = "binary(controller_node)"
 test-group = "controller-node"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
+# Zephyr native_sim tests: heavyweight (TAP networking + Zephyr + zenohd + ROS 2),
+# run sequentially with longer timeouts.
+[test-groups.zephyr-native-sim]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(zephyr_native_sim)"
+test-group = "zephyr-native-sim"
+slow-timeout = { period = "60s", terminate-after = 2 }
+
 [profile.ci]
 slow-timeout = { period = "30s", terminate-after = 2 }
 fail-fast = true

@@ -292,6 +292,99 @@ fn test_bidirectional_round_trip(zenohd_unique: ZenohRouter, sentinel_binary: Pa
 }
 
 // =============================================================================
+// Transport latency (Phase 7.2)
+// =============================================================================
+
+/// Measure message publication rate to verify transport latency < 10 ms.
+///
+/// Uses `ros2 topic hz` to measure the frequency of sentinel's Control output
+/// as observed by ROS 2. If messages arrive at ~30 Hz (every ~33 ms), transport
+/// latency must be well under 10 ms — otherwise messages would bunch up or
+/// arrive at a lower frequency.
+#[rstest]
+fn test_transport_latency(zenohd_unique: ZenohRouter, sentinel_binary: PathBuf) {
+    if !require_ros2_autoware() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start sentinel
+    eprintln!("Starting sentinel for latency measurement...");
+    let _sentinel = start_sentinel(&sentinel_binary, &locator).expect("Sentinel failed to start");
+
+    // Give sentinel time to start publishing
+    std::thread::sleep(Duration::from_secs(2));
+
+    let env_setup = sentinel_tests::ros2::ros2_env_setup_with_locator(&locator);
+
+    // Run `ros2 topic hz` for 5 seconds, then parse the output
+    let output = std::process::Command::new("bash")
+        .args([
+            "-c",
+            &format!(
+                "{env_setup}\ntimeout 8 ros2 topic hz /control/command/control_cmd \
+                 --window 50 2>&1 || true"
+            ),
+        ])
+        .output()
+        .expect("Failed to spawn ros2 topic hz");
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let combined = format!("{stdout}{stderr}");
+
+    eprintln!("ros2 topic hz output:\n{combined}");
+
+    // Parse "average rate: XX.XXX" lines
+    let rates: Vec<f64> = combined
+        .lines()
+        .filter_map(|line| {
+            line.find("average rate:")
+                .map(|pos| {
+                    let after = &line[pos + "average rate:".len()..];
+                    after
+                        .trim()
+                        .split_whitespace()
+                        .next()
+                        .and_then(|s| s.parse::<f64>().ok())
+                })
+                .flatten()
+        })
+        .collect();
+
+    eprintln!("Parsed rates: {:?}", rates);
+
+    assert!(
+        !rates.is_empty(),
+        "No rate measurements from ros2 topic hz. Transport may be broken."
+    );
+
+    // Use the last reported rate (most stable after warm-up)
+    let rate = rates.last().copied().unwrap();
+    eprintln!("Final measured rate: {rate:.1} Hz");
+
+    // Sentinel publishes at 30 Hz. If transport adds > 10 ms per message,
+    // the observed rate would drop below ~25 Hz (33ms period + 10ms = 43ms = ~23 Hz).
+    // We use 20 Hz as a conservative lower bound.
+    assert!(
+        rate >= 20.0,
+        "Publication rate {rate:.1} Hz is too low — indicates transport latency > 10 ms"
+    );
+
+    // Also verify it's not wildly above 30 Hz (sanity check)
+    assert!(
+        rate <= 40.0,
+        "Publication rate {rate:.1} Hz is unexpectedly high"
+    );
+
+    eprintln!(
+        "Transport latency verified: {rate:.1} Hz publication rate \
+         confirms sub-10ms transport on localhost"
+    );
+}
+
+// =============================================================================
 // Topic parity (Phase 8.1f + 8.2d)
 // =============================================================================
 

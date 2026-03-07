@@ -39,3 +39,7 @@ path = "tests/planning_simulator.rs"
 [[test]]
 name = "controller_node"
 path = "tests/controller_node.rs"
+
+[[test]]
+name = "zephyr_native_sim"
+path = "tests/zephyr_native_sim.rs"
