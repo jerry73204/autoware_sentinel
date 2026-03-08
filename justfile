@@ -192,6 +192,16 @@ run-sentinel-zephyr: build-zephyr
       '{{ zenohd }} --listen tcp/0.0.0.0:7447' \
       "$ZEPHYR_BIN"
 
+# Record baseline Autoware topic data for behavioral verification (Phase 9.1a)
+record-autoware-baseline duration="30": dump-autoware
+    #!/usr/bin/env bash
+    set -eo pipefail
+    source /opt/ros/humble/setup.bash
+    source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
+    # Use CycloneDDS (not rmw_zenoh_cpp) for reliable CLI tool interaction
+    export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    bash scripts/record_baseline.sh {{ duration }} tmp/bags/baseline
+
 # Run Zephyr native_sim integration tests (Phase 7.4)
 test-zephyr:
     cd tests && cargo nextest run -E 'binary(zephyr_native_sim)'

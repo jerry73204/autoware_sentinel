@@ -1,6 +1,6 @@
 # Phase 9: Behavioral Verification
 
-**Status:** Not started
+**Status:** In progress (9.1a complete)
 **Depends on:** Phase 8 (topic parity), Phase 7 (integration testing)
 **Goal:** Verify that the sentinel's topic outputs match official Autoware behavior under
 the same inputs, beyond just topic name parity.
@@ -80,10 +80,17 @@ For each topic, define what "matches" means:
 
 Build tooling to record and replay Autoware topic data for comparison.
 
-- [ ] 9.1a — Record baseline topic data
-  - Add `just record-autoware-baseline` recipe
-  - Record the 7 replaced nodes' output topics during a planning simulator drive
-  - Topics to record (functional outputs only, not debug):
+- [x] 9.1a — Record baseline topic data
+  - `just record-autoware-baseline [duration]` recipe (default 30s drive)
+  - `scripts/record_baseline.sh` — orchestrates Autoware → drive sequence → rosbag
+  - Uses CycloneDDS (not rmw_zenoh_cpp) for reliable CLI tool interaction
+  - Records 20 functional output topics from 7 replaced nodes during planning simulator drive
+  - Uses `ros2 bag record --storage mcap` for efficient MCAP format
+  - Autonomous drive sequence: initial pose → localization wait → route → engage
+  - Reuses existing poses from `tests/src/autoware.rs` (sample-map-planning)
+  - Configurable: `INIT_WAIT` (default 60s), `DRIVE_DURATION` (default 30s)
+  - Output: `tmp/bags/baseline/` (gitignored via `tmp/`)
+  - Topics recorded:
     - `/control/command/control_cmd`
     - `/control/command/gear_cmd`
     - `/control/command/hazard_lights_cmd`
@@ -104,7 +111,6 @@ Build tooling to record and replay Autoware topic data for comparison.
     - `/api/autoware/get/emergency`
     - `/api/operation_mode/state`
     - `/control/control_validator/validation_status`
-  - Store as rosbag in `tmp/bags/baseline/`
 
 - [ ] 9.1b — Record sentinel topic data
   - Add `just record-autoware-sentinel` recipe
