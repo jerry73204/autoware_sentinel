@@ -156,7 +156,9 @@ echo ""
 echo "=== Step 5: Autonomous drive sequence (auto_drive.py) ==="
 # Use --no-wait-arrival: the script engages autonomous mode and exits,
 # then we record for DRIVE_DURATION seconds while the vehicle drives.
-python3 "$SCRIPT_DIR/auto_drive.py" --no-wait-arrival --timeout 60 || {
+POSES_ARG="--poses ${POSES_FILE:-$SCRIPT_DIR/poses.yaml}"
+echo "  Using poses: ${POSES_FILE:-$SCRIPT_DIR/poses.yaml}"
+python3 "$SCRIPT_DIR/auto_drive.py" --no-wait-arrival --timeout 60 $POSES_ARG || {
     echo "  WARNING: auto_drive.py exited with error (continuing recording anyway)"
 }
 

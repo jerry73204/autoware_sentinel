@@ -202,6 +202,22 @@ record-autoware-baseline duration="30": dump-autoware
     source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
     bash scripts/record_baseline.sh {{ duration }} tmp/bags/baseline
 
+# Capture initial + goal poses from RViz and save to a file
+capture-poses output="scripts/poses.yaml":
+    #!/usr/bin/env bash
+    set -eo pipefail
+    source /opt/ros/humble/setup.bash
+    source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
+    python3 scripts/capture_poses.py -o {{ output }}
+
+# Run autonomous drive sequence (init pose → route → engage → wait for arrival)
+auto-drive timeout="120" poses="scripts/poses.yaml":
+    #!/usr/bin/env bash
+    set -eo pipefail
+    source /opt/ros/humble/setup.bash
+    source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
+    python3 scripts/auto_drive.py --timeout {{ timeout }} --poses {{ poses }}
+
 # Run Zephyr native_sim integration tests (Phase 7.4)
 test-zephyr:
     cd tests && cargo nextest run -E 'binary(zephyr_native_sim)'
