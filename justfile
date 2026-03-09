@@ -89,10 +89,9 @@ launch-autoware-baseline: dump-autoware
     set -eo pipefail
     source /opt/ros/humble/setup.bash
     source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
-    export RMW_IMPLEMENTATION=rmw_zenoh_cpp
     export ZENOH_SESSION_CONFIG_URI="$(pwd)/{{ session_config }}"
 
-    echo "=== Baseline Autoware (rmw_zenoh_cpp → {{ locator }}) ==="
+    echo "=== Baseline Autoware ({{ locator }}) ==="
     parallel --line-buffer --halt now,done=1 --delay 2 ::: \
       '{{ zenohd }} --config {{ router_config }}' \
       'play_launch replay --input-file tmp/launch/autoware_record.json --web-addr 0.0.0.0:8080'
@@ -114,7 +113,6 @@ launch-autoware-sentinel: filter-autoware build-sentinel-linux
     set -eo pipefail
     source /opt/ros/humble/setup.bash
     source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
-    export RMW_IMPLEMENTATION=rmw_zenoh_cpp
     export ZENOH_SESSION_CONFIG_URI="$(pwd)/{{ session_config }}"
 
     FILTERED=tmp/launch/autoware_record_filtered.json
@@ -164,6 +162,10 @@ build-rmw-zenoh:
 build-zenohd:
     cd external/zenoh && cargo build --profile fast -p zenohd
 
+# Run zenohd router (needed for rmw_zenoh_cpp)
+run-zenohd:
+    {{ zenohd }} --config {{ router_config }}
+
 # Run all verification
 verify: verify-kani verify-verus
 
@@ -198,8 +200,6 @@ record-autoware-baseline duration="30": dump-autoware
     set -eo pipefail
     source /opt/ros/humble/setup.bash
     source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
-    # Use CycloneDDS (not rmw_zenoh_cpp) for reliable CLI tool interaction
-    export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
     bash scripts/record_baseline.sh {{ duration }} tmp/bags/baseline
 
 # Run Zephyr native_sim integration tests (Phase 7.4)

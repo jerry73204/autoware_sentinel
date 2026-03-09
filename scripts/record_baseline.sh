@@ -50,10 +50,9 @@ TOPICS=(
     /control/control_validator/validation_status
 )
 
-# --- Use CycloneDDS transport (not rmw_zenoh_cpp) ---
-# rmw_zenoh_cpp has issues with ROS 2 CLI tools (service call hangs, topic pub
-# subscription matching failures). CycloneDDS works reliably for baseline recording.
-export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# --- Transport ---
+# RMW_IMPLEMENTATION should be set in the environment (e.g. .envrc).
+# Unset ZENOH_SESSION_CONFIG_URI to avoid interfering with CLI tools.
 unset ZENOH_SESSION_CONFIG_URI 2>/dev/null || true
 
 # --- Cleanup trap ---
