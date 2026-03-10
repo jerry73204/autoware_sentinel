@@ -83,18 +83,33 @@ dump-autoware map_path="/opt/autoware/1.5.0/share/autoware_test_utils/test_map":
 filter-autoware: dump-autoware
     scripts/filter_autoware_record.sh tmp/launch/autoware_record.json tmp/launch/autoware_record_filtered.json
 
-# Launch baseline Autoware planning simulator (unmodified, rmw_zenoh_cpp)
-launch-autoware-baseline: dump-autoware
+# Launch baseline Autoware planning simulator (unmodified)
+[arg("record", long="record", value="true")]
+[arg("drive", long="drive", value="true")]
+[arg("timeout", long="timeout")]
+[arg("poses", long="poses")]
+launch-autoware-baseline $record="false" $drive="false" $timeout="120" $poses="scripts/poses.yaml": dump-autoware
     #!/usr/bin/env bash
     set -eo pipefail
     source /opt/ros/humble/setup.bash
     source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
     export ZENOH_SESSION_CONFIG_URI="$(pwd)/{{ session_config }}"
 
-    echo "=== Baseline Autoware ({{ locator }}) ==="
-    parallel --line-buffer --halt now,done=1 --delay 2 ::: \
-      '{{ zenohd }} --config {{ router_config }}' \
-      'play_launch replay --input-file tmp/launch/autoware_record.json --web-addr 0.0.0.0:8080'
+    JOBS=(
+        '{{ zenohd }} --config {{ router_config }} < /dev/null'
+        'play_launch replay --input-file tmp/launch/autoware_record.json --web-addr 0.0.0.0:8080'
+    )
+
+    if [ "$record" = "true" ]; then
+        JOBS+=("scripts/record_bag.sh baseline")
+    fi
+
+    if [ "$drive" = "true" ]; then
+        JOBS+=("sleep 30 && python3 scripts/auto_drive.py --timeout $timeout --poses $poses")
+    fi
+
+    echo "=== Baseline Autoware ==="
+    parallel --line-buffer --halt now,done=1 --delay 2 ::: "${JOBS[@]}"
 
 # Launch sentinel binary with zenohd (no Autoware)
 launch-sentinel: build-sentinel-linux
@@ -104,11 +119,15 @@ launch-sentinel: build-sentinel-linux
 
     echo "=== Sentinel + zenohd ({{ locator }}) ==="
     parallel --line-buffer --halt now,done=1 --delay 2 ::: \
-      '{{ zenohd }} --config {{ router_config }}' \
+      '{{ zenohd }} --config {{ router_config }} < /dev/null' \
       "RUST_LOG=info ZENOH_LOCATOR={{ locator }} ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 $SENTINEL"
 
 # Launch filtered Autoware + sentinel (7 nodes replaced by sentinel binary)
-launch-autoware-sentinel: filter-autoware build-sentinel-linux
+[arg("record", long="record", value="true")]
+[arg("drive", long="drive", value="true")]
+[arg("timeout", long="timeout")]
+[arg("poses", long="poses")]
+launch-autoware-sentinel $record="false" $drive="false" $timeout="120" $poses="scripts/poses.yaml": filter-autoware build-sentinel-linux
     #!/usr/bin/env bash
     set -eo pipefail
     source /opt/ros/humble/setup.bash
@@ -118,11 +137,22 @@ launch-autoware-sentinel: filter-autoware build-sentinel-linux
     FILTERED=tmp/launch/autoware_record_filtered.json
     SENTINEL="$(pwd)/src/autoware_sentinel_linux/target/debug/autoware_sentinel_linux"
 
-    echo "=== Autoware + Sentinel (rmw_zenoh_cpp → {{ locator }}) ==="
-    parallel --line-buffer --halt now,done=1 --delay 2 ::: \
-      '{{ zenohd }} --config {{ router_config }}' \
-      "play_launch replay --input-file $FILTERED --web-addr 0.0.0.0:8080" \
-      "RUST_LOG=info ZENOH_LOCATOR={{ locator }} ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 $SENTINEL"
+    JOBS=(
+        '{{ zenohd }} --config {{ router_config }} < /dev/null'
+        "play_launch replay --input-file $FILTERED --web-addr 0.0.0.0:8080"
+        "RUST_LOG=info ZENOH_LOCATOR={{ locator }} ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 $SENTINEL"
+    )
+
+    if [ "$record" = "true" ]; then
+        JOBS+=("scripts/record_bag.sh sentinel")
+    fi
+
+    if [ "$drive" = "true" ]; then
+        JOBS+=("sleep 30 && python3 scripts/auto_drive.py --timeout $timeout --poses $poses")
+    fi
+
+    echo "=== Autoware + Sentinel ==="
+    parallel --line-buffer --halt now,done=1 --delay 2 ::: "${JOBS[@]}"
 
 # Format all packages
 format:
@@ -193,14 +223,6 @@ run-sentinel-zephyr: build-zephyr
     parallel --line-buffer --halt now,done=1 --delay 2 ::: \
       '{{ zenohd }} --listen tcp/0.0.0.0:7447' \
       "$ZEPHYR_BIN"
-
-# Record baseline Autoware topic data for behavioral verification (Phase 9.1a)
-record-autoware-baseline duration="30": dump-autoware
-    #!/usr/bin/env bash
-    set -eo pipefail
-    source /opt/ros/humble/setup.bash
-    source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
-    bash scripts/record_baseline.sh {{ duration }} tmp/bags/baseline
 
 # Capture initial + goal poses from RViz and save to a file
 capture-poses output="scripts/poses.yaml":

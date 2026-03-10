@@ -1,0 +1,22 @@
+# Functional output topics from the 7 sentinel-replaced nodes.
+# Used by rosbag recording in launch recipes.
+/control/command/control_cmd
+/control/command/gear_cmd
+/control/command/hazard_lights_cmd
+/control/command/turn_indicators_cmd
+/control/command/emergency_cmd
+/control/shift_decider/gear_cmd
+/control/gate_mode_cmd
+/control/vehicle_cmd_gate/is_stopped
+/control/vehicle_cmd_gate/operation_mode
+/system/fail_safe/mrm_state
+/system/mrm/emergency_stop/status
+/system/mrm/comfortable_stop/status
+/system/emergency/gear_cmd
+/system/emergency/hazard_lights_cmd
+/system/emergency/turn_indicators_cmd
+/api/autoware/get/engage
+/autoware/engage
+/api/autoware/get/emergency
+/api/operation_mode/state
+/control/control_validator/validation_status
