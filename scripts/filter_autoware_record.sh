@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Filter a play_launch record.json to remove the 7 nodes replaced by the sentinel.
+# Filter a play_launch record.json to remove the 7 nodes replaced by the sentinel,
+# plus the ADAPI operation_mode adaptor (whose change_to_autonomous service conflicts
+# with the sentinel's own service).
 #
 # Removes:
 #   node[]:      mrm_handler
@@ -7,7 +9,9 @@
 #                mrm_comfortable_stop_operator_container
 #   load_node[]: autoware_vehicle_cmd_gate, autoware_shift_decider,
 #                autoware_operation_mode_transition_manager,
-#                autoware_control_validator
+#                autoware_control_validator,
+#                operation_mode (autoware_default_adapi_universe)
+#                autoware_state (autoware_default_adapi_universe)
 #
 # Usage: filter_autoware_record.sh <input.json> <output.json>
 
@@ -43,5 +47,7 @@ jq '
     and .package != "autoware_shift_decider"
     and .package != "autoware_operation_mode_transition_manager"
     and .package != "autoware_control_validator"
+    and ((.node_name != "operation_mode") or (.package != "autoware_default_adapi_universe"))
+    and ((.node_name != "autoware_state") or (.package != "autoware_default_adapi_universe"))
   )]
 ' "$INPUT" > "$OUTPUT"
