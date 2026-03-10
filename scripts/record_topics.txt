@@ -20,3 +20,10 @@
 /api/autoware/get/emergency
 /api/operation_mode/state
 /control/control_validator/validation_status
+
+# Diagnostic topics for pipeline debugging
+/planning/scenario_planning/trajectory
+/control/trajectory_follower/control_cmd
+/autoware/state
+/vehicle/status/velocity_status
+/localization/kinematic_state
