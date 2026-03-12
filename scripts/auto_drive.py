@@ -280,7 +280,7 @@ class AutoDriveNode(Node):
         )
         return self.route_state == RouteState.SET
 
-    def step5_engage_autonomous(self) -> bool:
+    def step5_engage_autonomous(self, max_retries: int = 10) -> bool:
         """Change to autonomous mode via AD API."""
         self.get_logger().info("=== Step 5: Engage autonomous mode ===")
 
@@ -290,27 +290,23 @@ class AutoDriveNode(Node):
             return False
 
         req = ChangeOperationMode.Request()
-        resp = self._call_service(
-            self.change_to_auto_client, req, "ChangeOperationMode"
-        )
-        if resp and resp.status.success:
-            self.get_logger().info("  Autonomous mode engaged")
-            return True
-
-        if resp:
-            self.get_logger().warn(
-                f"  Engage failed: success={resp.status.success}, "
-                f"code={resp.status.code}, msg={resp.status.message}"
-            )
-            # Retry — may fail if not ready yet
-            self.get_logger().info("  Retrying in 3s...")
-            self._spin_for(3.0)
+        for attempt in range(max_retries):
             resp = self._call_service(
                 self.change_to_auto_client, req, "ChangeOperationMode"
             )
             if resp and resp.status.success:
-                self.get_logger().info("  Autonomous mode engaged on retry")
+                self.get_logger().info(
+                    f"  Autonomous mode engaged (attempt {attempt + 1})"
+                )
                 return True
+
+            if resp:
+                self.get_logger().warn(
+                    f"  Engage attempt {attempt + 1}/{max_retries} failed: "
+                    f"code={resp.status.code}, msg={resp.status.message}"
+                )
+            if attempt < max_retries - 1:
+                self._spin_for(3.0)
 
         self.get_logger().error("  Failed to engage autonomous mode")
         return False
