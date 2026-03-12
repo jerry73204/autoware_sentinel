@@ -12,6 +12,8 @@
 #                autoware_control_validator,
 #                operation_mode (autoware_default_adapi_universe)
 #                autoware_state (autoware_default_adapi_universe)
+#                interface (autoware_default_adapi) — change_to_autonomous
+#                  service conflicts with sentinel's own service
 #
 # Usage: filter_autoware_record.sh <input.json> <output.json>
 
@@ -49,5 +51,6 @@ jq '
     and .package != "autoware_control_validator"
     and ((.node_name != "operation_mode") or (.package != "autoware_default_adapi_universe"))
     and ((.node_name != "autoware_state") or (.package != "autoware_default_adapi_universe"))
+    and ((.node_name != "interface") or (.package != "autoware_default_adapi"))
   )]
 ' "$INPUT" > "$OUTPUT"
