@@ -595,6 +595,49 @@ fn clamp(val: f64, min: f64, max: f64) -> f64 {
     }
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    fn any_f64() -> f64 {
+        f64::from_bits(kani::any::<u64>())
+    }
+
+    fn any_finite_f64() -> f64 {
+        let v = any_f64();
+        kani::assume(!v.is_nan() && v.is_finite());
+        v
+    }
+
+    /// Clamp never panics and returns a value within [min, max] for finite inputs.
+    #[kani::proof]
+    fn clamp_bounded_for_finite() {
+        let val = any_finite_f64();
+        let min = any_finite_f64();
+        let max = any_finite_f64();
+        kani::assume(min <= max);
+
+        let result = clamp(val, min, max);
+        assert!(result >= min);
+        assert!(result <= max);
+    }
+
+    /// MpcTrajectory::push never panics and respects capacity.
+    #[kani::proof]
+    fn trajectory_push_never_panics() {
+        let mut traj = MpcTrajectory::new();
+        let pt = MpcTrajPoint::default();
+        // Push up to MAX_TRAJ_POINTS + 1 to test overflow
+        let count: u8 = kani::any();
+        let mut i: u8 = 0;
+        while i < count {
+            let _ = traj.push(pt);
+            i += 1;
+        }
+        assert!(traj.len <= MAX_TRAJ_POINTS);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

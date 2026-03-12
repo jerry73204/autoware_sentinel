@@ -57,6 +57,43 @@ impl LowpassFilter1d {
     }
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    fn any_f64() -> f64 {
+        f64::from_bits(kani::any::<u64>())
+    }
+
+    fn any_finite_f64() -> f64 {
+        let v = any_f64();
+        kani::assume(!v.is_nan() && v.is_finite());
+        v
+    }
+
+    /// Low-pass filter never panics for any input.
+    #[kani::proof]
+    fn filter_never_panics() {
+        let mut f = LowpassFilter1d::new(any_f64(), any_f64());
+        let _out = f.filter(any_f64());
+    }
+
+    /// For gain in [0,1] and finite inputs, output stays finite.
+    #[kani::proof]
+    fn finite_inputs_produce_finite_output() {
+        let gain = any_finite_f64();
+        kani::assume(gain >= 0.0 && gain <= 1.0);
+        let init = any_finite_f64();
+        kani::assume(libm::fabs(init) < 1e10);
+        let input = any_finite_f64();
+        kani::assume(libm::fabs(input) < 1e10);
+
+        let mut f = LowpassFilter1d::new(init, gain);
+        let out = f.filter(input);
+        assert!(out.is_finite());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

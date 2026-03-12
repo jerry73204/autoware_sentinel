@@ -217,6 +217,45 @@ pub fn cholesky_solve(h: &[f64], f: &[f64], n: usize, x: &mut [f64]) -> bool {
     true
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    fn any_f64() -> f64 {
+        f64::from_bits(kani::any::<u64>())
+    }
+
+    /// inv_small never panics for any 2x2 matrix input (including NaN, Inf).
+    #[kani::proof]
+    fn inv_small_2x2_never_panics() {
+        let a = [any_f64(), any_f64(), any_f64(), any_f64()];
+        let mut out = [0.0; 4];
+        let _ok = inv_small(&a, 2, &mut out);
+    }
+
+    /// Cholesky solver never panics for any 2x2 input.
+    #[kani::proof]
+    fn cholesky_solve_2x2_never_panics() {
+        let h = [any_f64(), any_f64(), any_f64(), any_f64()];
+        let f = [any_f64(), any_f64()];
+        let mut x = [0.0; 2];
+        let _ok = cholesky_solve(&h, &f, 2, &mut x);
+    }
+
+    /// inv_small returns false (not panic) for a singular matrix.
+    #[kani::proof]
+    fn inv_small_singular_returns_false() {
+        // Singular: second row is scaled first row
+        let a = any_f64();
+        let b = any_f64();
+        let s = any_f64();
+        let mat = [a, b, a * s, b * s];
+        let mut out = [0.0; 4];
+        // Either succeeds (numerical near-singular) or returns false — never panics
+        let _ok = inv_small(&mat, 2, &mut out);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -9,6 +9,9 @@ publish = false
 autoware_vehicle_info_utils = { path = "../autoware_vehicle_info_utils" }
 libm = "0.2"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
 [features]
 default = []
 std = []

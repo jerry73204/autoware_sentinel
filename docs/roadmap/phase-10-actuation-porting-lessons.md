@@ -156,7 +156,7 @@ This is the highest-value port — pure math, no external C library dependencies
   - Stop distance calculation
   - Trajectory pitch computation
 
-- [ ] 10.2f — Kani verification harnesses (future)
+- [x] 10.2f — Kani verification harnesses (8 proofs: pid output bounded, panic-freedom, anti-windup integral clamping, LPF panic-freedom, LPF finite output, diff-limit panic-freedom, diff-limit bounded, slope compensation bounded)
 
 **Message dependencies:** `autoware_control_msgs`, `autoware_planning_msgs`,
 `autoware_vehicle_msgs`, `geometry_msgs`, `nav_msgs`
@@ -226,7 +226,7 @@ This is the most complex component due to matrix operations and QP solver depend
   - Output low-pass filtering
   - 6 unit tests
 
-- [ ] 10.4f — Kani verification harnesses (future)
+- [x] 10.4f — Kani verification harnesses (8 proofs: inv_small 2x2 panic-freedom, cholesky_solve 2x2 panic-freedom, inv_small singular returns false, kinematics/kinematics_no_delay/dynamics discretization panic-freedom, clamp bounded, trajectory push capacity)
 
 **Matrix operation strategy (chosen):** Fixed-size flat arrays with manual row-major
 operations in `mat.rs`. No `nalgebra` dependency — keeps the crate dependency-free

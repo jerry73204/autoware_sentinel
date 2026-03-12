@@ -338,6 +338,70 @@ fn bilinear_discretize(
     mat::copy(c, &mut out.cd, dim_y * dim_x);
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    fn any_f64() -> f64 {
+        f64::from_bits(kani::any::<u64>())
+    }
+
+    fn any_finite_f64() -> f64 {
+        let v = any_f64();
+        kani::assume(!v.is_nan() && v.is_finite());
+        v
+    }
+
+    /// Kinematics discretization never panics for any velocity/curvature.
+    #[kani::proof]
+    fn kinematics_discrete_never_panics() {
+        let mut model = VehicleModel::new_kinematics(2.74, 0.7, 0.27);
+        let vel = any_finite_f64();
+        kani::assume(vel > 0.0 && vel < 100.0);
+        let curv = any_finite_f64();
+        kani::assume(libm::fabs(curv) < 1.0);
+        let dt = any_finite_f64();
+        kani::assume(dt > 0.001 && dt < 1.0);
+
+        model.set_state(vel, curv);
+        let mut dm = DiscreteMatrices::default();
+        model.calculate_discrete_matrix(dt, &mut dm);
+    }
+
+    /// KinematicsNoDelay discretization never panics.
+    #[kani::proof]
+    fn kinematics_no_delay_discrete_never_panics() {
+        let mut model = VehicleModel::new_kinematics_no_delay(2.74, 0.7);
+        let vel = any_finite_f64();
+        kani::assume(vel > 0.0 && vel < 100.0);
+        let curv = any_finite_f64();
+        kani::assume(libm::fabs(curv) < 1.0);
+        let dt = any_finite_f64();
+        kani::assume(dt > 0.001 && dt < 1.0);
+
+        model.set_state(vel, curv);
+        let mut dm = DiscreteMatrices::default();
+        model.calculate_discrete_matrix(dt, &mut dm);
+    }
+
+    /// Dynamics discretization never panics for realistic parameters.
+    #[kani::proof]
+    fn dynamics_discrete_never_panics() {
+        let mut model =
+            VehicleModel::new_dynamics(2.74, 0.7, 400.0, 400.0, 450.0, 450.0, 150000.0, 150000.0);
+        let vel = any_finite_f64();
+        kani::assume(vel > 0.01 && vel < 100.0);
+        let curv = any_finite_f64();
+        kani::assume(libm::fabs(curv) < 1.0);
+        let dt = any_finite_f64();
+        kani::assume(dt > 0.001 && dt < 1.0);
+
+        model.set_state(vel, curv);
+        let mut dm = DiscreteMatrices::default();
+        model.calculate_discrete_matrix(dt, &mut dm);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

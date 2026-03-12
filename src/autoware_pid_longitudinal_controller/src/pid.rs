@@ -152,6 +152,95 @@ fn clamp(val: f64, min: f64, max: f64) -> f64 {
     }
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    fn any_f64() -> f64 {
+        f64::from_bits(kani::any::<u64>())
+    }
+
+    fn any_finite_f64() -> f64 {
+        let v = any_f64();
+        kani::assume(!v.is_nan() && v.is_finite());
+        v
+    }
+
+    fn any_positive_finite_f64() -> f64 {
+        let v = any_finite_f64();
+        kani::assume(v > 0.0);
+        v
+    }
+
+    fn default_gains() -> PidGains {
+        PidGains {
+            kp: 1.0,
+            ki: 0.1,
+            kd: 0.0,
+        }
+    }
+
+    fn default_limits() -> PidLimits {
+        PidLimits {
+            max_ret: 1.0,
+            min_ret: -1.0,
+            max_ret_p: 1.0,
+            min_ret_p: -1.0,
+            max_ret_i: 0.3,
+            min_ret_i: -0.3,
+            max_ret_d: 0.0,
+            min_ret_d: 0.0,
+        }
+    }
+
+    /// PID output is always within [min_ret, max_ret] for any finite error and dt.
+    #[kani::proof]
+    fn output_bounded() {
+        let limits = default_limits();
+        let mut pid = PidController::new(default_gains(), limits);
+        let error = any_finite_f64();
+        let dt = any_positive_finite_f64();
+        kani::assume(dt < 1.0);
+
+        let (output, _) = pid.calculate(error, dt, true);
+        assert!(output >= limits.min_ret);
+        assert!(output <= limits.max_ret);
+    }
+
+    /// PID calculate never panics for any f64 input (NaN, Inf, subnormals).
+    #[kani::proof]
+    fn calculate_never_panics() {
+        let mut pid = PidController::new(default_gains(), default_limits());
+        let error = any_f64();
+        let dt = any_f64();
+        let enable = kani::any::<bool>();
+
+        let _result = pid.calculate(error, dt, enable);
+    }
+
+    /// Anti-windup: integral contribution stays within [min_ret_i, max_ret_i].
+    #[kani::proof]
+    #[kani::unwind(11)]
+    fn anti_windup_integral_bounded() {
+        let limits = default_limits();
+        let mut pid = PidController::new(default_gains(), limits);
+
+        let error = any_finite_f64();
+        kani::assume(libm::fabs(error) < 1000.0);
+        let dt = any_positive_finite_f64();
+        kani::assume(dt < 1.0);
+
+        // Accumulate for 10 steps
+        let mut step = 0;
+        while step < 10 {
+            let (_, contrib) = pid.calculate(error, dt, true);
+            assert!(contrib.i >= limits.min_ret_i);
+            assert!(contrib.i <= limits.max_ret_i);
+            step += 1;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

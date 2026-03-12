@@ -743,6 +743,78 @@ fn clamp(val: f64, min: f64, max: f64) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
+// Verification (Kani)
+// ---------------------------------------------------------------------------
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    fn any_f64() -> f64 {
+        f64::from_bits(kani::any::<u64>())
+    }
+
+    fn any_finite_f64() -> f64 {
+        let v = any_f64();
+        kani::assume(!v.is_nan() && v.is_finite());
+        v
+    }
+
+    /// apply_diff_limit never panics for any f64 inputs.
+    #[kani::proof]
+    fn diff_limit_never_panics() {
+        let _result = apply_diff_limit(any_f64(), any_f64(), any_f64(), any_f64(), any_f64());
+    }
+
+    /// Jerk-limited output stays within [prev + min_rate*dt, prev + max_rate*dt]
+    /// for finite inputs with positive dt.
+    #[kani::proof]
+    fn diff_limit_bounded() {
+        let input = any_finite_f64();
+        let prev = any_finite_f64();
+        kani::assume(libm::fabs(prev) < 1e6);
+        kani::assume(libm::fabs(input) < 1e6);
+        let dt = any_finite_f64();
+        kani::assume(dt > 0.0 && dt < 1.0);
+        let max_rate = any_finite_f64();
+        let min_rate = any_finite_f64();
+        kani::assume(max_rate >= 0.0 && max_rate < 100.0);
+        kani::assume(min_rate <= 0.0 && min_rate > -100.0);
+
+        let result = apply_diff_limit(input, prev, dt, max_rate, min_rate);
+        let upper = prev + max_rate * dt;
+        let lower = prev + min_rate * dt;
+        assert!(result <= upper + 1e-10);
+        assert!(result >= lower - 1e-10);
+    }
+
+    /// Slope compensation is bounded by gravity for clamped pitch.
+    #[kani::proof]
+    fn slope_compensation_bounded() {
+        let ctrl =
+            PidLongitudinalController::new(ControllerParams::default(), VehicleInfo::default());
+        let acc = any_finite_f64();
+        kani::assume(libm::fabs(acc) < 100.0);
+        let pitch = any_f64(); // any pitch including NaN
+        let shift = if kani::any::<bool>() {
+            Shift::Forward
+        } else {
+            Shift::Reverse
+        };
+
+        let result = ctrl.apply_slope_compensation(acc, pitch, shift);
+        // With default params: max_pitch = 0.1, min_pitch = -0.1
+        // max gravity component = g * sin(0.1) ≈ 0.98
+        // NaN pitch → clamp(NaN, -0.1, 0.1) → -0.1 or 0.1 (clamp returns min for NaN)
+        // So result is bounded by |acc| + g * sin(0.1) < |acc| + 1.0
+        if result.is_finite() {
+            let bound = libm::fabs(acc) + GRAVITY;
+            assert!(libm::fabs(result) <= bound + 1e-6);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
