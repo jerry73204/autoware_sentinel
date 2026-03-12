@@ -1,5 +1,7 @@
 # justfile for autoware-nano-ros
 
+set dotenv-load
+
 packages := "autoware_stop_filter autoware_vehicle_velocity_converter autoware_shift_decider autoware_mrm_emergency_stop_operator autoware_mrm_comfortable_stop_operator autoware_heartbeat_watchdog autoware_mrm_handler autoware_vehicle_cmd_gate autoware_twist2accel autoware_control_validator autoware_operation_mode_transition_manager autoware_interpolation autoware_universe_utils autoware_vehicle_info_utils autoware_motion_utils autoware_pid_longitudinal_controller autoware_mpc_lateral_controller autoware_trajectory_follower_base autoware_trajectory_follower_node"
 
 kani_packages := "autoware_stop_filter autoware_vehicle_velocity_converter autoware_shift_decider autoware_mrm_emergency_stop_operator"
@@ -7,7 +9,6 @@ kani_packages := "autoware_stop_filter autoware_vehicle_velocity_converter autow
 workspace_dir := "../autoware-sentinel-workspace"
 env_script := workspace_dir / "env.sh"
 zenohd := "external/zenoh/target/fast/zenohd"
-locator := "tcp/127.0.0.1:7447"
 session_config := ".config/zenoh_session.json5"
 router_config := ".config/zenoh_router.json5"
 
@@ -43,11 +44,11 @@ build-zephyr:
 
 # Build Linux sentinel binary
 build-sentinel-linux:
-    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 cargo build
+    cd src/autoware_sentinel_linux && cargo build
 
 # Run Linux sentinel binary
 run-sentinel-linux:
-    cd src/autoware_sentinel_linux && ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 RUST_LOG=info cargo run
+    cd src/autoware_sentinel_linux && cargo run
 
 # Test all packages (unit tests)
 test:
@@ -117,10 +118,10 @@ launch-sentinel: build-sentinel-linux
     set -eo pipefail
     SENTINEL="$(pwd)/src/autoware_sentinel_linux/target/debug/autoware_sentinel_linux"
 
-    echo "=== Sentinel + zenohd ({{ locator }}) ==="
+    echo "=== Sentinel + zenohd ($ZENOH_LOCATOR) ==="
     parallel --line-buffer --halt now,done=1 --delay 2 ::: \
       '{{ zenohd }} --config {{ router_config }} < /dev/null' \
-      "RUST_LOG=info ZENOH_LOCATOR={{ locator }} ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 $SENTINEL"
+      "$SENTINEL"
 
 # Launch filtered Autoware + sentinel (7 nodes replaced by sentinel binary)
 [arg("record", long="record", value="true")]
@@ -140,7 +141,7 @@ launch-autoware-sentinel $record="false" $drive="false" $timeout="120" $poses="s
     JOBS=(
         '{{ zenohd }} --config {{ router_config }} < /dev/null'
         "play_launch replay --input-file $FILTERED --web-addr 0.0.0.0:8080"
-        "RUST_LOG=info ZENOH_LOCATOR={{ locator }} ZPICO_MAX_PUBLISHERS=32 ZPICO_MAX_LIVELINESS=52 NROS_MAX_PARAMETERS=64 $SENTINEL"
+        "$SENTINEL"
     )
 
     if [ "$record" = "true" ]; then
