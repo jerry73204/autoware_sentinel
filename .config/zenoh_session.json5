@@ -1,12 +1,17 @@
 // Zenoh session config for rmw_zenoh_cpp clients.
-// All ROS 2 nodes connect to the zenohd router at tcp/localhost:7447.
+// All ROS 2 nodes connect to the zenohd router at tcp/127.0.0.1:7447.
 // Set via ZENOH_SESSION_CONFIG_URI in .envrc.
 {
   mode: "client",
   connect: {
-    endpoints: ["tcp/localhost:7447"],
+    // Use 127.0.0.1 (not localhost) to avoid IPv6 resolution issues under load.
+    endpoints: ["tcp/127.0.0.1:7447"],
+    timeout_ms: 30000,
   },
   scouting: {
     multicast: { enabled: false },
   },
+  // Increase query timeout to 30s (default 10s) to prevent service call
+  // timeouts when zenohd is under load during Autoware startup.
+  queries_default_timeout: 30000,
 }

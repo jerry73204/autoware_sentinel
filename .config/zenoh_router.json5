@@ -9,4 +9,15 @@
   scouting: {
     multicast: { enabled: false },
   },
+  // Increase query timeout to 30s (default 10s) to prevent
+  // "Route reply: Query not found!" when services are slow under load.
+  queries_default_timeout: 30000,
+  transport: {
+    unicast: {
+      // Increase accept capacity for Autoware's many concurrent sessions.
+      accept_pending: 200,
+      open_timeout: 30000,
+      accept_timeout: 30000,
+    },
+  },
 }
