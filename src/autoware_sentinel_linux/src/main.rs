@@ -98,7 +98,13 @@ const VALIDATION_FAILURE_THRESHOLD: u32 = 30;
 /// Control period (s) for 30 Hz timer.
 const DT: f32 = 1.0 / 30.0;
 
-/// OperationModeState constant: AUTONOMOUS mode.
+/// External control staleness threshold (ms). If Autoware's controller hasn't
+/// sent an update within this window, zero the acceleration to safely stop.
+/// Prevents runaway during zenoh-pico subscription dropouts.
+const EXTERNAL_CONTROL_STALE_MS: u64 = 500;
+
+/// OperationModeState mode constants.
+const OP_MODE_STOP: u8 = 1;
 const OP_MODE_AUTONOMOUS: u8 = 2;
 
 /// MrmBehaviorStatus constants.
@@ -167,6 +173,14 @@ struct SafetyIsland {
     has_trajectory: bool,
     has_odometry: bool,
     has_steering: bool,
+    /// True when Autoware's controller_node_exe is providing control commands
+    has_external_control: bool,
+    /// Timestamp (ms) when the last external control message was received.
+    /// Used to detect staleness during zenoh-pico subscription dropouts.
+    last_external_control_ms: u64,
+    /// True after `/api/operation_mode/change_to_autonomous` service is called.
+    /// Mirrors standard Autoware: starts in STOP, transitions to AUTONOMOUS on request.
+    autonomous_engaged: bool,
 }
 
 static ISLAND: SyncRefCell<Option<SafetyIsland>> = SyncRefCell(RefCell::new(None));
@@ -222,7 +236,10 @@ impl SafetyIsland {
             cmd_gate: VehicleCmdGate::new(p.gate),
             shift_decider: ShiftDecider::new(p.shift_decider_park_on_goal),
             auto_control: Control::default(),
-            autoware_state: AutowareState::default(),
+            autoware_state: AutowareState {
+                state: AUTOWARE_STATE_DRIVING,
+                ..Default::default()
+            },
             gear_report: GearReport::default(),
 
             // Validation
@@ -235,6 +252,9 @@ impl SafetyIsland {
             has_trajectory: false,
             has_odometry: false,
             has_steering: false,
+            has_external_control: false,
+            last_external_control_ms: 0,
+            autonomous_engaged: false,
         }
     }
 
@@ -426,9 +446,13 @@ fn run() -> Result<(), NodeError> {
         shift_decider_gear_pub,
         is_stopped_pub,
         gate_op_mode_pub,
+        // /system/operation_mode/state (consumed by behavior_path_planner)
+        system_op_mode_pub,
         // Phase 8.1d — Engagement (topics 1–2)
         engage_api_pub,
         engage_compat_pub,
+        // Autoware state (replaces ADAPI autoware_state adaptor)
+        autoware_state_pub,
         // Phase 8.1g — Emergency API (topic 14)
         emergency_api_pub,
         // Phase 8.2a — Control validator debug (topics 16–19)
@@ -472,9 +496,15 @@ fn run() -> Result<(), NodeError> {
             node.create_publisher::<OperationModeState>(
                 "/control/vehicle_cmd_gate/operation_mode",
             )?,
+            // /system/operation_mode/state (consumed by behavior_path_planner)
+            node.create_publisher::<OperationModeState>(
+                "/system/operation_mode/state",
+            )?,
             // 8.1d — Engagement
             node.create_publisher::<Engage>("/api/autoware/get/engage")?,
             node.create_publisher::<Engage>("/autoware/engage")?,
+            // Autoware state (replaces ADAPI autoware_state adaptor)
+            node.create_publisher::<AutowareState>("/autoware/state")?,
             // 8.1g — Emergency API
             node.create_publisher::<Emergency>("/api/autoware/get/emergency")?,
             // 8.2a — Control validator debug
@@ -528,7 +558,11 @@ fn run() -> Result<(), NodeError> {
     // Autonomous command subscriptions (Autoware-compatible topics)
     // ====================================================================
     executor.add_subscription::<Control, _>("/control/trajectory_follower/control_cmd", |msg| {
-        with_island(|island| island.auto_control = msg.clone())
+        with_island(|island| {
+            island.auto_control = msg.clone();
+            island.has_external_control = true;
+            island.last_external_control_ms = now_ms();
+        })
     })?;
     executor.add_subscription::<AutowareState, _>("/autoware/state", |msg| {
         with_island(|island| island.autoware_state = msg.clone());
@@ -563,7 +597,10 @@ fn run() -> Result<(), NodeError> {
     executor.add_service::<ChangeOperationMode, _>(
         "/api/operation_mode/change_to_autonomous",
         |_request| {
-            info!("ChangeOperationMode service called — returning success");
+            with_island(|island| {
+                island.autonomous_engaged = true;
+                info!("ChangeOperationMode: STOP → AUTONOMOUS");
+            });
             ChangeOperationModeResponse {
                 status: autoware_adapi_v1_msgs::msg::ResponseStatus {
                     success: true,
@@ -583,7 +620,37 @@ fn run() -> Result<(), NodeError> {
             let now = now_ms();
 
             // ── Trajectory follower (Phase 10.5) ─────────────────────
-            island.run_controller(now as f64 / 1000.0);
+            // Skip internal controller when Autoware's controller_node_exe
+            // is providing control commands (avoid overwriting auto_control).
+            if !island.has_external_control {
+                island.run_controller(now as f64 / 1000.0);
+            }
+
+            // ── Staleness guard ────────────────────────────────────────
+            // When using external control, check if the data is stale.
+            // During zenoh-pico subscription dropouts, auto_control retains
+            // the last value (possibly with positive acceleration). Replace
+            // with gentle braking at current speed to avoid:
+            //  1. Overshooting (sustained positive acceleration)
+            //  2. Control validator over-velocity trigger (target_vel=0
+            //     while vehicle still moving → MRM cascade)
+            let auto_control_timestamp_ms = if island.has_external_control {
+                let age_ms = now.saturating_sub(island.last_external_control_ms);
+                if age_ms > EXTERNAL_CONTROL_STALE_MS {
+                    // Stale: gentle braking at current speed.
+                    // Use current_velocity as target so the validator doesn't
+                    // flag over-velocity (target ≈ actual → no mismatch).
+                    island.auto_control.longitudinal.velocity =
+                        island.current_velocity as f32;
+                    island.auto_control.longitudinal.acceleration = -1.5;
+                }
+                // Pass the actual reception time, not the current timer tick.
+                // This lets the gate's heartbeat correctly detect staleness.
+                island.last_external_control_ms
+            } else {
+                // Internal controller updates auto_control every tick
+                now
+            };
 
             // ── MRM chain ──────────────────────────────────────────────
 
@@ -636,9 +703,9 @@ fn run() -> Result<(), NodeError> {
             island
                 .cmd_gate
                 .set_current_speed(island.current_velocity as f32);
-            island
-                .cmd_gate
-                .set_engaged(island.autoware_state.state == AUTOWARE_STATE_DRIVING);
+            // Engaged only after change_to_autonomous service is called.
+            // Mirrors standard Autoware: starts in STOP, transitions on request.
+            island.cmd_gate.set_engaged(island.autonomous_engaged);
 
             // Autonomous source: control + shift decider gear
             let auto_gear = island.shift_decider.decide(
@@ -646,6 +713,8 @@ fn run() -> Result<(), NodeError> {
                 &island.auto_control,
                 &island.gear_report,
             );
+            // Pass the actual data reception timestamp (not the current timer
+            // tick) so the gate's heartbeat monitor accurately tracks freshness.
             island.cmd_gate.set_autonomous_commands(
                 SourceCommands {
                     control: island.auto_control.clone(),
@@ -656,7 +725,7 @@ fn run() -> Result<(), NodeError> {
                     turn_indicators: TurnIndicatorsCommand::default(),
                     hazard_lights: HazardLightsCommand::default(),
                 },
-                now,
+                auto_control_timestamp_ms,
             );
 
             // Emergency source: MRM operator control + MRM gear/hazard
@@ -700,11 +769,16 @@ fn run() -> Result<(), NodeError> {
             control_pub.publish(&gate_output.control).ok();
             turn_pub.publish(&gate_output.turn_indicators).ok();
 
-            // Engagement flow: publish OperationModeState (always autonomous-ready)
+            // Engagement flow: publish OperationModeState based on engagement state
+            let current_mode = if island.autonomous_engaged {
+                OP_MODE_AUTONOMOUS
+            } else {
+                OP_MODE_STOP
+            };
             let op_mode_state = OperationModeState {
                 stamp: Default::default(),
-                mode: OP_MODE_AUTONOMOUS,
-                is_autoware_control_enabled: true,
+                mode: current_mode,
+                is_autoware_control_enabled: island.autonomous_engaged,
                 is_in_transition: false,
                 is_stop_mode_available: true,
                 is_autonomous_mode_available: true,
@@ -776,19 +850,30 @@ fn run() -> Result<(), NodeError> {
                 })
                 .ok();
             gate_op_mode_pub.publish(&op_mode_state).ok();
+            system_op_mode_pub.publish(&op_mode_state).ok();
 
             // 8.1d — Engagement
-            let engaged = island.autoware_state.state == AUTOWARE_STATE_DRIVING;
+            // Always publish engage=true: the sentinel operates in autonomous mode
+            // from startup and Autoware's state_monitor needs engage=true to
+            // transition to DRIVING (which the cmd_gate checks).
             engage_api_pub
                 .publish(&Engage {
                     stamp: Default::default(),
-                    engage: engaged,
+                    engage: true,
                 })
                 .ok();
             engage_compat_pub
                 .publish(&Engage {
                     stamp: Default::default(),
-                    engage: engaged,
+                    engage: true,
+                })
+                .ok();
+
+            // Autoware state: always DRIVING (sentinel replaces ADAPI autoware_state adaptor)
+            autoware_state_pub
+                .publish(&AutowareState {
+                    stamp: Default::default(),
+                    state: AUTOWARE_STATE_DRIVING,
                 })
                 .ok();
 

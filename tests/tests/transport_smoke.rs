@@ -150,16 +150,13 @@ fn test_sentinel_publishes_operation_mode(zenohd_unique: ZenohRouter, sentinel_b
         &output[..output.len().min(500)]
     );
 
-    // Check for mode=2 (AUTONOMOUS) in the output
-    let has_mode = output.contains("mode: 2");
-    let has_autoware_control = output.contains("is_autoware_control_enabled: true");
-    eprintln!(
-        "mode=AUTONOMOUS: {}, autoware_control_enabled: {}",
-        has_mode, has_autoware_control
-    );
+    // Sentinel starts in STOP mode (mode=1). Transition to AUTONOMOUS requires
+    // an explicit service call to /api/operation_mode/change_to_autonomous.
+    let has_mode = output.contains("mode: 1");
+    eprintln!("mode=STOP: {}", has_mode);
     assert!(
         has_mode,
-        "OperationModeState not received or mode != AUTONOMOUS"
+        "OperationModeState not received or mode != STOP (expected mode: 1)"
     );
 }
 
@@ -721,7 +718,7 @@ fn test_sentinel_param_get(zenohd_unique: ZenohRouter, sentinel_binary: PathBuf)
     // Spot-check a few parameter values
     let checks: &[(&str, &str)] = &[
         ("stop_filter.vx_threshold", "0.1"),
-        ("heartbeat.timeout_ms", "5000"),
+        ("heartbeat.timeout_ms", "60000"),
         ("shift_decider.park_on_goal", "True"),
         ("vehicle_info.wheel_base", "2.79"),
         ("pid.kp", "1.0"),

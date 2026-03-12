@@ -119,8 +119,8 @@ pub fn declare_parameters(server: &mut ParameterServer) {
     ro!(
         server,
         "heartbeat.timeout_ms",
-        5000_i64,
-        "Heartbeat timeout (ms)"
+        60000_i64,
+        "Heartbeat timeout (ms) — set high to account for zenoh discovery delay"
     );
 
     // ── MRM emergency stop ──────────────────────────────────────────────
