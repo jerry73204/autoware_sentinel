@@ -256,3 +256,71 @@ Note: 11.2 and 11.6 can proceed in parallel once 11.1 confirms IVC works.
 4. **IVC frame fragmentation**: zenoh messages may exceed the 64-byte IVC frame size.
    Mitigation: implement length-prefixed reassembly in both IVC link backend and bridge
    daemon (11.2 + 11.6).
+
+## SPE Firmware Flashing
+
+The SPE firmware partition (`A_spe-fw` / `B_spe-fw`) lives on **QSPI NOR flash**, not on
+the NVMe/eMMC GPT. NVIDIA's hardware firewall blocks direct QSPI access from Linux
+userspace — no `/dev/mtd*` devices are exposed and `/dev/disk/by-partlabel/` does not
+contain SPE entries. This means `dd` to the partition is not possible.
+
+### Method 1: Host USB recovery flash (recommended for development)
+
+Flash a single partition from an x86 host connected via USB recovery mode:
+
+```bash
+# On host, from L4T BSP directory:
+sudo ./flash.sh -k A_spe-fw jetson-agx-orin-devkit mmcblk0p1
+```
+
+This is the fastest path for iterating on SPE firmware — it targets only the SPE partition
+without touching other bootloader components. Requires putting the Orin into USB recovery
+mode (hold recovery button + reset).
+
+### Method 2: On-device UEFI capsule update (for deployment/OTA)
+
+The Jetson can update its own bootloader partitions via a UEFI capsule, but this updates
+**all** bootloader partitions (MB1, MB2, UEFI, BPMP, SPE, etc.) as a monolithic operation.
+There is no way to target only `spe-fw` — NVIDIA's single-partition capsule feature does
+not include `spe-fw` in its supported partition list.
+
+**Generating the capsule (on host):**
+
+```bash
+# 1. Replace SPE binary in BSP
+cp spe.bin Linux_for_Tegra/bootloader/spe_t234.bin
+
+# 2. Generate BUP payload
+sudo ./build_l4t_bup.sh jetson-agx-orin-devkit mmcblk0p1
+
+# 3. Generate UEFI capsule
+./generate_capsule/l4t_generate_soc_capsule.sh \
+    -i <bup_payload> -o TEGRA_BL.Cap t234
+```
+
+**Applying the capsule (on Jetson):**
+
+```bash
+sudo nv_bootloader_capsule_updater.sh -q /path/to/TEGRA_BL.Cap
+sudo reboot  # UEFI applies update to inactive A/B slot
+```
+
+All bootloader components in the capsule must be from the same L4T version. Do not power
+off during the update.
+
+### Tool summary
+
+| Tool | Can update SPE? | Notes |
+|------|----------------|-------|
+| `flash.sh -k A_spe-fw` | Yes (single partition) | Host only, USB recovery mode |
+| `nv_update_engine` | Yes (all partitions) | On-device, full BUP payload |
+| `nv_bootloader_capsule_updater.sh` | Yes (all partitions) | On-device, UEFI capsule on reboot |
+| `nvbootctrl` | No | A/B slot metadata only |
+| Single-partition capsule | No | `spe-fw` not in supported list |
+| Direct `dd` | No | QSPI hardware firewall blocks access |
+
+### Recommendation
+
+Use **Method 1** (host USB flash) during Phase 11 development for fast iteration. Use
+**Method 2** (UEFI capsule) for production deployment and field updates where host access
+is unavailable.
