@@ -56,9 +56,142 @@ signaling.
 └──────────────────────────────────────────────────────────────┘
 ```
 
+## Development Strategy
+
+Development proceeds in two stages: first validate all sentinel logic on the **FreeRTOS
+POSIX simulator** running as a Linux process on the Orin itself, then migrate to real SPE
+hardware once the binary is fully tested.
+
+### Stage 1: FreeRTOS POSIX simulator (subphases 11.1p–11.3p)
+
+The FreeRTOS kernel includes an official POSIX port (`portable/ThirdParty/GCC/Posix/`) that
+uses pthreads to simulate FreeRTOS tasks and a timer thread for the tick interrupt. This
+lets us compile and run the sentinel application natively on the Orin without any emulator
+or cross-compilation.
+
+**Advantages:**
+- Fastest edit-compile-test cycle (native compilation, no flashing)
+- Can connect to the real zenohd on localhost via mocked IVC (Unix domain sockets or
+  `shm_open`) and run Autoware planning simulator integration tests
+- Full access to GDB, valgrind, AddressSanitizer
+- FreeRTOS task scheduling, queues, semaphores, and timers all work correctly
+
+**Limitations:**
+- Runs on AArch64 (not ARMv7-R) — cannot catch ABI or ISA-specific issues
+- No MPU, no real-time timing guarantees
+- Cannot validate 256 KB BTCM memory budget
+- Known segfault issue on ARM64 Ubuntu with the POSIX port (signal handling / stack
+  alignment) — may need investigation
+
+**What to validate in this stage:**
+- All sentinel algorithms (heartbeat watchdog, MRM emergency stop, vehicle command gate)
+- FreeRTOS task structure and scheduling
+- zenoh-pico IVC link backend (with mock IVC transport)
+- IVC bridge daemon (Linux side)
+- End-to-end Autoware integration tests through zenohd
+
+### Stage 2: Real SPE hardware (subphases 11.1–11.7)
+
+Once the sentinel is fully tested on the POSIX port, migrate to the actual Cortex-R5F:
+- Cross-compile for `armv7r-none-eabihf`
+- Replace mock IVC with real `tegra_ivc_channel_*` API
+- Validate code fits in 256 KB BTCM
+- Flash and test on AGX Orin hardware
+- Resolve float ABI mismatch (softfp vs hard float)
+
+### Alternative simulation options considered
+
+| Approach | Verdict |
+|----------|---------|
+| QEMU Cortex-R5 (`xlnx-zcu102`) | Good for validating actual `armv7r` binaries; use as secondary check before flashing |
+| Renode | Multi-core SoC simulation (A53+R5); useful later for IVC integration testing |
+| NVIDIA SPE simulator | Does not exist |
+| ARM FVP Cortex-R5 | Requires ARM DS license; not worth the cost |
+| Xen/FreeRTOS on Orin | Wrong architecture (AArch64 vs ARMv7-R); impractical |
+
 ## Subphases
 
-### - [ ] 11.1 — IVC Echo Verification on Hardware
+### Stage 1: FreeRTOS POSIX Simulator
+
+#### - [ ] 11.1 — FreeRTOS POSIX Port Setup
+
+Set up the FreeRTOS POSIX port to run FreeRTOS as a native Linux process on the Orin.
+
+**Tasks:**
+- [ ] Clone FreeRTOS kernel with POSIX port (`portable/ThirdParty/GCC/Posix/`)
+- [ ] Build and run the `FreeRTOS/Demo/Posix_GCC/` demo on the Orin (aarch64)
+- [ ] Investigate and fix the known ARM64 POSIX port segfault issue (signal handling /
+  stack alignment) if it manifests on L4T Ubuntu
+- [ ] Create `src/autoware_sentinel_spe/` application crate with FreeRTOS POSIX as a
+  build option (feature flag or conditional compilation)
+- [ ] Verify FreeRTOS task creation, queues, semaphores, and timers work correctly
+- [ ] Add `just build-spe-sim` recipe to root justfile
+
+**Acceptance criteria:**
+- [ ] FreeRTOS POSIX demo runs on Orin aarch64 without crashes
+- [ ] Sentinel crate compiles and runs as a FreeRTOS POSIX process
+
+#### - [ ] 11.2 — Mock IVC Transport
+
+Implement a mock IVC transport layer that uses Unix domain sockets (or `shm_open`) to
+simulate IVC communication between the sentinel process and a bridge process on localhost.
+
+**Tasks:**
+- [ ] Define IVC transport trait/API abstracting `tegra_ivc_channel_read/write` so that
+  the real IVC and mock IVC share the same interface
+- [ ] Implement mock IVC backend using Unix domain sockets (bidirectional, frame-oriented)
+- [ ] Implement mock IVC bridge: a small daemon that reads mock IVC frames from the Unix
+  socket and forwards them to zenohd via TCP on `localhost:7447`, and vice versa
+- [ ] Handle frame fragmentation: zenoh messages may exceed 64-byte IVC frame size —
+  implement simple length-prefixed reassembly (same protocol as real IVC bridge)
+- [ ] Add zenoh-pico IVC link backend (`Z_FEATURE_LINK_IVC`) in nano-ros, with the
+  transport trait dispatching to mock or real IVC at compile time
+- [ ] Add `just run-ivc-bridge-sim` recipe
+
+**Files to modify in nano-ros:**
+1. `packages/zpico/zpico-sys/zenoh-pico/src/link/unicast/ivc.c` (new)
+2. `packages/zpico/zpico-sys/zenoh-pico/include/zenoh-pico/link/config/ivc.h` (new)
+3. `packages/zpico/zpico-sys/zenoh-pico/src/link/link.c` — register IVC in link table
+4. `packages/zpico/zpico-sys/zenoh-pico/src/link/endpoint.c` — parse `ivc/` scheme
+5. `packages/zpico/zpico-sys/zenoh-pico/include/zenoh-pico/link/link.h` — IVC feature flag
+6. `packages/zpico/zpico-sys/zenoh-pico/src/link/unicast/transport.c` — open/listen
+7. `packages/zpico/zpico-sys/zenoh-pico/CMakeLists.txt` — conditional compile
+8. `packages/zpico/zpico-sys/build.rs` — add IVC source to POSIX and FreeRTOS builds
+
+**Acceptance criteria:**
+- [ ] Mock IVC bridge forwards frames between Unix socket and zenohd TCP
+- [ ] Fragmented zenoh messages reassembled correctly
+- [ ] zenohd sees the simulated sentinel as a connected client
+- [ ] IVC link compiles for both native (POSIX mock) and `armv7r-none-eabihf` (real IVC)
+
+#### - [ ] 11.3 — Sentinel POSIX Application and Integration Tests
+
+Wire the sentinel algorithms into the FreeRTOS POSIX application and run end-to-end
+integration tests against the Autoware planning simulator.
+
+**Tasks:**
+- [ ] Determine minimum viable sentinel feature set:
+  - Heartbeat watchdog (subscribe `/autoware/state`, publish MRM state)
+  - MRM emergency stop operator (jerk-limited braking)
+  - Vehicle command gate (pass-through or emergency override)
+  - Drop: trajectory follower, debug topics, parameter services, control validator
+- [ ] Wire reduced algorithm set with `Executor::<_, N, ARENA>` sized for SPE constraints
+- [ ] Use `has_external_control = true` (receive control commands from CCPLEX)
+- [ ] Start mock IVC bridge + zenohd + FreeRTOS POSIX sentinel as a test harness
+- [ ] Verify sentinel topics visible via `ros2 topic list`
+- [ ] Verify heartbeat watchdog triggers MRM on simulated failure
+- [ ] Run Autoware planning simulator integration tests against the POSIX sentinel
+- [ ] Add `just test-spe-sim` recipe
+
+**Acceptance criteria:**
+- [ ] Sentinel runs as FreeRTOS POSIX process with reduced algorithm set
+- [ ] Heartbeat watchdog + emergency stop + gate functional end-to-end
+- [ ] Planning simulator integration tests pass with the POSIX sentinel
+- [ ] All sentinel logic validated before moving to real hardware
+
+### Stage 2: Real SPE Hardware
+
+#### - [ ] 11.4 — IVC Echo Verification on Hardware
 
 Verify IVC communication works on the AGX Orin 64GB with L4T 36.4.4.
 
@@ -77,68 +210,25 @@ Verify IVC communication works on the AGX Orin 64GB with L4T 36.4.4.
 - [ ] Latency and throughput numbers recorded
 - [ ] Device tree overlay documented
 
-### - [ ] 11.2 — zenoh-pico IVC Link Backend
+#### - [ ] 11.5 — nros-orin-spe Board Crate and Cross-compilation
 
-Add a custom IVC transport link to zenoh-pico in the nano-ros repo, enabling zenoh-pico
-sessions over IVC shared memory instead of TCP/UDP/serial.
-
-**Context:** zenoh-pico's transport is abstracted via 9 function pointers in `_z_link_t`
-(open, listen, close, write, write_all, read, read_exact, read_socket, free). The serial
-link (`src/link/unicast/serial.c`) is the closest reference. A custom IVC link maps these
-to `tegra_ivc_channel_write()` / `tegra_ivc_channel_read()`.
+Create the board support crate for nano-ros on the Orin SPE and set up the full
+cross-compilation toolchain. The sentinel logic is already validated from Stage 1 —
+this subphase focuses on making it build and link for the real Cortex-R5F target.
 
 **Tasks:**
-- [ ] Create `src/link/unicast/ivc.c` in zenoh-pico with IVC link implementation
-- [ ] Add `Z_FEATURE_LINK_IVC` feature flag (following `Z_FEATURE_LINK_SERIAL` pattern)
-- [ ] Register IVC link type in `_z_endpoint_unicast_open()` / `_z_endpoint_unicast_listen()`
-- [ ] Define IVC locator format: `ivc/<channel_id>` (e.g., `ivc/2`)
-- [ ] Add IVC link config struct with channel ID, frame count, frame size
-- [ ] Wire into zpico-sys `build.rs`: `build_zenoh_pico_freertos()` must compile `ivc.c`
-  when `Z_FEATURE_LINK_IVC=1`
-- [ ] Test with QEMU IVC mock or defer testing to 11.5
-
-**Files to modify in nano-ros:**
-1. `packages/zpico/zpico-sys/zenoh-pico/src/link/unicast/ivc.c` (new)
-2. `packages/zpico/zpico-sys/zenoh-pico/include/zenoh-pico/link/config/ivc.h` (new)
-3. `packages/zpico/zpico-sys/zenoh-pico/src/link/link.c` — register IVC in link table
-4. `packages/zpico/zpico-sys/zenoh-pico/src/link/endpoint.c` — parse `ivc/` scheme
-5. `packages/zpico/zpico-sys/zenoh-pico/include/zenoh-pico/link/link.h` — IVC feature flag
-6. `packages/zpico/zpico-sys/zenoh-pico/src/link/unicast/transport.c` — open/listen
-7. `packages/zpico/zpico-sys/zenoh-pico/CMakeLists.txt` — conditional compile
-8. `packages/zpico/zpico-sys/build.rs` — add IVC source to FreeRTOS build
-
-**Acceptance criteria:**
-- [ ] IVC link compiles with `Z_FEATURE_LINK_IVC=1` for `armv7r-none-eabihf`
-- [ ] Locator `ivc/2` parsed correctly
-- [ ] Link open/close/write/read map to `tegra_ivc_channel_*` functions
-
-### - [ ] 11.3 — nros-orin-spe Board Crate
-
-Create the board support crate for nano-ros on the Orin SPE, following the existing
-`nros-mps2-an385-freertos` pattern.
-
-**Tasks:**
-- [ ] Create `packages/boards/nros-orin-spe/` in nano-ros repo
+- [ ] Create `packages/boards/nros-orin-spe/` in nano-ros repo (following
+  `nros-mps2-an385-freertos` pattern)
 - [ ] Implement `run()` function: allocates FreeRTOS task via `xTaskCreate`, calls user
   closure inside task context, returns immediately (scheduler already running)
 - [ ] Implement `Config` with `zenoh_locator: "ivc/2"` default
 - [ ] Implement `println!` macro via NVIDIA FSP `printf` (TCU debug output)
-- [ ] Wire IVC init (`tegra_ivc_channel_get()`) before user closure runs
+- [ ] Wire real IVC init (`tegra_ivc_channel_get()`) — swap mock IVC backend for real
+  `tegra_ivc_channel_*` API using the transport trait from 11.2
 - [ ] Create `build.rs` to link against NVIDIA FSP static libraries
 - [ ] Set target triple to `armv7r-none-eabihf` in `.cargo/config.toml`
 - [ ] Resolve float ABI: either build BSP C code with `-mfloat-abi=hard` or use
   `armv7r-none-eabi` (soft float) for Rust and add shims
-
-**Acceptance criteria:**
-- [ ] Board crate compiles for `armv7r-none-eabihf`
-- [ ] `run()` creates FreeRTOS task and returns
-- [ ] A minimal pub-only app (no callbacks) compiles and links
-
-### - [ ] 11.4 — Cross-compilation Infrastructure
-
-Set up the full cross-compilation toolchain for building Rust + C SPE firmware.
-
-**Tasks:**
 - [ ] Add `rustup target add armv7r-none-eabihf` to setup instructions
 - [ ] Create `scripts/spe/build.sh` — builds Rust board crate, then invokes NVIDIA Makefile
 - [ ] Add `ENABLE_NROS_APP := 1` to `target_specific.mk` template
@@ -148,69 +238,43 @@ Set up the full cross-compilation toolchain for building Rust + C SPE firmware.
   .bss` exceeds budget
 - [ ] Create `just build-spe` recipe in root justfile
 - [ ] Verify linked binary fits in 256 KB with `arm-none-eabi-size`
-
-**Acceptance criteria:**
-- [ ] `just build-spe` produces `spe.bin` with nano-ros linked in
-- [ ] Binary size < 256 KB (with margin report)
-- [ ] Float ABI consistent between Rust and C objects
-
-### - [ ] 11.5 — Sentinel SPE Application
-
-Port the sentinel to run on the SPE with a reduced feature set appropriate for the
-256 KB memory constraint.
-
-**Context:** The Linux sentinel has 32 publishers, 10 subscribers, 1 service, 1 timer,
-56 parameters, and a 2.7 MB release binary. The SPE version must be drastically reduced.
-
-**Tasks:**
-- [ ] Determine minimum viable sentinel feature set for SPE:
-  - Heartbeat watchdog (subscribe `/autoware/state`, publish MRM state)
-  - MRM emergency stop operator (jerk-limited braking)
-  - Vehicle command gate (pass-through or emergency override)
-  - Drop: trajectory follower, debug topics, parameter services, control validator
-- [ ] Create `src/autoware_sentinel_spe/` application crate (or in nano-ros boards)
-- [ ] Wire reduced algorithm set with `Executor::<_, N, ARENA>` sized for SPE
-- [ ] Use `has_external_control = true` (receive control commands from CCPLEX)
-- [ ] Estimate and track memory usage: code, static data, heap, stacks
 - [ ] If 256 KB is exceeded, evaluate:
   - LTO + `opt-level = "z"` for size optimization
   - Drop additional algorithms
   - Move zenoh-pico to DRAM (if accessible from SPE via AST)
 
 **Acceptance criteria:**
-- [ ] Sentinel SPE binary fits in 256 KB BTCM
-- [ ] Heartbeat watchdog + emergency stop + gate functional
+- [ ] Board crate compiles for `armv7r-none-eabihf`
+- [ ] `just build-spe` produces `spe.bin` with nano-ros + sentinel linked in
+- [ ] Binary size < 256 KB (with margin report)
+- [ ] Float ABI consistent between Rust and C objects
 - [ ] Memory budget documented with per-component breakdown
 
-### - [ ] 11.6 — Linux IVC Bridge Daemon
+#### - [ ] 11.6 — Linux IVC Bridge Daemon (Real Hardware)
 
-Create a Linux-side daemon that bridges IVC frames to zenohd via TCP, allowing the SPE
-sentinel to communicate with the ROS 2 network.
+Adapt the mock IVC bridge from 11.2 to use real IVC sysfs/device interfaces.
 
 **Tasks:**
-- [ ] Create `src/ivc-bridge/` daemon (Rust, runs on CCPLEX Linux)
-- [ ] Read/write IVC frames via sysfs:
+- [ ] Update `src/ivc-bridge/` daemon to read/write IVC frames via sysfs:
   `/sys/devices/platform/bus@0/bus@0:aon_echo/data_channel` (or `/dev/tegra-ivc-*`)
-- [ ] Open TCP connection to zenohd on `localhost:7447`
-- [ ] Frame protocol: zenoh-pico sends zenoh wire frames over IVC, bridge forwards to
-  zenohd TCP socket and vice versa
-- [ ] Handle IVC frame fragmentation: zenoh messages may exceed 64-byte IVC frame size —
-  implement simple length-prefixed reassembly
+- [ ] Verify the same frame protocol and fragmentation logic from the mock bridge works
+  with real IVC frame sizes (16×64B)
 - [ ] Add systemd service file for auto-start
 - [ ] Add `just run-ivc-bridge` recipe
 
 **Acceptance criteria:**
-- [ ] Bridge daemon forwards IVC↔TCP bidirectionally
+- [ ] Bridge daemon forwards real IVC↔TCP bidirectionally
 - [ ] Fragmented zenoh messages reassembled correctly
 - [ ] zenohd sees SPE sentinel as a connected client
 
-### - [ ] 11.7 — Integration Test and Flash Deployment
+#### - [ ] 11.7 — Integration Test and Flash Deployment
 
 End-to-end test: flash SPE firmware, start bridge daemon, verify sentinel participates
-in Autoware planning simulator.
+in Autoware planning simulator. The sentinel logic is already proven from Stage 1 —
+this subphase validates the real hardware transport and deployment procedure.
 
 **Tasks:**
-- [ ] Flash SPE firmware to AGX Orin (`flash.sh -k A_spe-fw`)
+- [ ] Flash SPE firmware to AGX Orin (see "SPE Firmware Flashing" section below)
 - [ ] Start IVC bridge daemon on Linux
 - [ ] Start zenohd + Autoware planning simulator
 - [ ] Verify SPE sentinel topics visible via `ros2 topic list`
@@ -229,15 +293,18 @@ in Autoware planning simulator.
 
 | Subphase | Depends on | Repository |
 |----------|------------|------------|
-| 11.1 | Hardware (AGX Orin 64GB) | autoware-nano-ros |
-| 11.2 | 11.1 (IVC verified) | nano-ros |
-| 11.3 | 11.2 (IVC link backend) | nano-ros |
-| 11.4 | 11.3 (board crate) | autoware-nano-ros + nano-ros |
-| 11.5 | 11.4 (cross-compilation) | autoware-nano-ros |
-| 11.6 | 11.1 (IVC verified) | autoware-nano-ros |
+| **Stage 1** | | |
+| 11.1 | Phase 7 (integration testing) | autoware-nano-ros |
+| 11.2 | 11.1 (FreeRTOS POSIX running) | autoware-nano-ros + nano-ros |
+| 11.3 | 11.2 (mock IVC transport) | autoware-nano-ros |
+| **Stage 2** | | |
+| 11.4 | Hardware (AGX Orin 64GB) | autoware-nano-ros |
+| 11.5 | 11.3 (sentinel validated) + 11.4 (IVC verified) | autoware-nano-ros + nano-ros |
+| 11.6 | 11.4 (IVC verified) + 11.2 (bridge protocol) | autoware-nano-ros |
 | 11.7 | 11.5 + 11.6 | autoware-nano-ros |
 
-Note: 11.2 and 11.6 can proceed in parallel once 11.1 confirms IVC works.
+Note: Stage 2 subphases 11.4 and 11.6 can proceed in parallel. Stage 1 can run entirely
+without hardware — Stage 2 begins once the sentinel is validated and hardware is ready.
 
 ## Risk Assessment
 
