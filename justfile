@@ -67,6 +67,10 @@ test-transport:
 test-planning:
     cd tests && cargo nextest run -E 'binary(planning_simulator)'
 
+# Run auto-drive comparison tests (baseline vs sentinel)
+test-auto-drive:
+    cd tests && cargo nextest run -E 'binary(auto_drive_comparison)'
+
 # Dump Autoware planning simulator launch to record.json
 dump-autoware map_path="/opt/autoware/1.5.0/share/autoware_test_utils/test_map":
     #!/usr/bin/env bash
@@ -106,7 +110,7 @@ launch-autoware-baseline $record="false" $drive="false" $timeout="120" $poses="s
     fi
 
     if [ "$drive" = "true" ]; then
-        JOBS+=("sleep 30 && python3 scripts/auto_drive.py --timeout $timeout --poses $poses")
+        JOBS+=("sleep 90 && python3 scripts/auto_drive.py --timeout $timeout --poses $poses")
     fi
 
     echo "=== Baseline Autoware ==="
@@ -149,7 +153,7 @@ launch-autoware-sentinel $record="false" $drive="false" $timeout="120" $poses="s
     fi
 
     if [ "$drive" = "true" ]; then
-        JOBS+=("sleep 30 && python3 scripts/auto_drive.py --timeout $timeout --poses $poses")
+        JOBS+=("sleep 90 && python3 scripts/auto_drive.py --timeout $timeout --poses $poses")
     fi
 
     echo "=== Autoware + Sentinel ==="

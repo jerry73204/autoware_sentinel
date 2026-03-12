@@ -38,6 +38,10 @@
 
 mod params;
 
+// Stub for zpico debug function (bare-metal semihosting, no-op on Linux)
+#[unsafe(no_mangle)]
+pub extern "C" fn zpico_debug_i32(_label: *const u8, _value: i32) {}
+
 use std::cell::RefCell;
 use std::sync::OnceLock;
 use std::time::Instant;

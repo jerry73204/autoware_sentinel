@@ -43,3 +43,7 @@ path = "tests/controller_node.rs"
 [[test]]
 name = "zephyr_native_sim"
 path = "tests/zephyr_native_sim.rs"
+
+[[test]]
+name = "auto_drive_comparison"
+path = "tests/auto_drive_comparison.rs"

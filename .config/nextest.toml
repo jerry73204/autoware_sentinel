@@ -51,6 +51,16 @@ filter = "binary(zephyr_native_sim)"
 test-group = "zephyr-native-sim"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
+# Auto-drive comparison tests: very heavyweight (full Autoware stack + auto_drive.py),
+# run sequentially with very long timeouts.
+[test-groups.auto-drive-comparison]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(auto_drive_comparison)"
+test-group = "auto-drive-comparison"
+slow-timeout = { period = "300s", terminate-after = 2 }
+
 [profile.ci]
 slow-timeout = { period = "30s", terminate-after = 2 }
 fail-fast = true
