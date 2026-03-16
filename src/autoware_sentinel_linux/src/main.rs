@@ -411,7 +411,7 @@ fn main() {
 
 fn run() -> Result<(), NodeError> {
     let config = ExecutorConfig::from_env().node_name("sentinel");
-    let mut executor = Executor::<_, 52, 16384>::open(&config)?;
+    let mut executor = Executor::open(&config)?;
 
     // Register ROS 2 parameter services (~/get_parameters, ~/set_parameters, etc.)
     executor.register_parameter_services("/sentinel")?;

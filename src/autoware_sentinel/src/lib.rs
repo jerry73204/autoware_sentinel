@@ -261,7 +261,7 @@ fn run() -> Result<(), NodeError> {
     *ISLAND.0.borrow_mut() = Some(SafetyIsland::new());
 
     let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
-    let mut executor = Executor::<_, 16, 16384>::open(&config)?;
+    let mut executor = Executor::open(&config)?;
 
     // --- Create publishers (node borrows executor, dropped after) ---
     let (mrm_state_pub, hazard_pub, gear_pub, control_pub, turn_pub) = {
