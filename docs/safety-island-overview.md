@@ -104,25 +104,194 @@ async fn publish(cx: publish::Context) {
 
 ---
 
-## 5. Execution Safety: RTIC
+## 5. The Bare-Metal Software Stack
 
-RTIC (Real-Time Interrupt-driven Concurrency) — a priority-based preemptive scheduler backed by formal theory [4].
+People often ask: *"How can a program run without an OS?"*  On a microcontroller, your
+binary **is** the only software.  There is no kernel, no scheduler, no `main()` that
+returns to a shell.  The hardware boots straight into your code.
 
-| Property | How |
-|---|---|
-| **Deadlock-free** | Stack Resource Policy (SRP) [5] — proven at compile time |
-| **No priority inversion** | Priority ceiling computed statically |
-| **Zero-overhead dispatch** | Tasks are hardware interrupts, not OS threads |
-| **WCET-analyzable** | Each task is bounded, no unbounded blocking |
-| **Race-free** | Shared resources locked via priority ceiling, enforced by type system |
-
-No RTOS kernel needed. The hardware NVIC *is* the scheduler.
+### 5.1 Layers of the Stack
 
 ```
-Priority 3 ──────┐             ┌── brake_check()     ← highest, never delayed
-Priority 2 ──────┤  preempts   ├── control_loop()
-Priority 1 ──────┘             └── net_poll()         ← lowest, yields via await
+┌─────────────────────────────────────────────────────────┐
+│                    Application                          │
+│  Sentinel logic: watchdog, MRM handler, command gate    │
+├─────────────────────────────────────────────────────────┤
+│                    nano-ros                              │
+│  ROS 2 API: Node, Publisher, Subscriber, Executor       │
+├─────────────────────────────────────────────────────────┤
+│                    RTIC framework                        │
+│  Priority scheduler — maps tasks to HW interrupts       │
+├─────────────────────────────────────────────────────────┤
+│              Hardware Abstraction Layer (HAL)            │
+│  Rust PAC/HAL crates: GPIO, UART, SPI, Ethernet, Timer  │
+├─────────────────────────────────────────────────────────┤
+│               Cortex-M / Cortex-R hardware              │
+│  NVIC (interrupt controller), SysTick, MPU, DMA         │
+└─────────────────────────────────────────────────────────┘
 ```
+
+**Compare this with a Linux-based ROS 2 stack:**
+
+```
+┌─────────────────────────────┐   ┌──────────────────────────────┐
+│  Linux + ROS 2 (rclcpp)     │   │  Bare-metal + nano-ros       │
+├─────────────────────────────┤   ├──────────────────────────────┤
+│  App (ROS nodes)            │   │  App (Sentinel algorithms)   │
+│  rclcpp / rclrs             │   │  nano-ros (no_std)           │
+│  rmw + DDS (millions LOC)   │   │  zenoh-pico (~30k LOC)       │
+│  Linux kernel               │   │  RTIC (zero-cost scheduler)  │
+│  Bootloader (U-Boot/GRUB)   │   │  HAL + startup code          │
+├─────────────────────────────┤   ├──────────────────────────────┤
+│  ~10M+ lines of code        │   │  ~50k lines of code          │
+│  Non-deterministic           │   │  Deterministic               │
+│  Hard to certify (QM–ASIL B)│   │  Certifiable (ASIL C/D)      │
+└─────────────────────────────┘   └──────────────────────────────┘
+```
+
+Each layer is small and auditable.  No virtual memory, no process scheduler, no syscalls.
+Every function call is a direct branch.  Every memory access is to a known static address.
+
+### 5.2 How RTIC Replaces an RTOS
+
+A traditional RTOS (FreeRTOS, Zephyr, ThreadX) provides:
+
+1. **A scheduler** — decides which thread runs next
+2. **Synchronization** — mutexes, semaphores, message queues
+3. **Memory management** — heap allocator, stack allocation per thread
+
+RTIC eliminates all three by leveraging **hardware interrupt priorities** directly:
+
+| Concept | Traditional RTOS | RTIC |
+|---|---|---|
+| **Task** | OS thread (needs dedicated stack) | Interrupt handler (shares a single stack) |
+| **Scheduling** | Software scheduler (tick-driven) | Hardware NVIC (zero-latency preemption) |
+| **Priority** | Software priority queue | Hardware priority register |
+| **Mutex** | Runtime lock (can deadlock) | Priority ceiling (deadlock-free by construction) |
+| **Context switch** | Save/restore registers via kernel | Hardware interrupt entry/exit (~12 cycles on Cortex-M) |
+| **Footprint** | Kernel + per-thread stacks (KB each) | No kernel, single stack (~1 KB total) |
+
+**The key insight:** On Cortex-M, the NVIC (Nested Vectored Interrupt Controller) already
+implements a hardware priority-based preemptive scheduler.  RTIC simply maps your tasks
+onto interrupt vectors.  The compiler statically verifies that shared resources are accessed
+without deadlocks using the Stack Resource Policy (SRP) [5].
+
+### 5.3 Anatomy of a Bare-Metal Application
+
+Here is what an RTIC application looks like in practice:
+
+```rust
+#[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [SPI1, SPI2])]
+mod app {
+    use super::*;
+
+    // ── Shared resources (accessed across tasks via priority ceiling) ──
+    #[shared]
+    struct Shared {
+        executor: Executor,            // nano-ros executor (pub/sub engine)
+        watchdog_ok: bool,             // heartbeat status
+    }
+
+    // ── Local resources (owned by exactly one task, no locking needed) ──
+    #[local]
+    struct Local {
+        led: gpio::Pin<Output>,        // diagnostic LED
+        timer: hal::timer::CounterHz,  // hardware timer peripheral
+    }
+
+    // ── init: runs once at boot, returns resources ──
+    #[init]
+    fn init(cx: init::Context) -> (Shared, Local) {
+        let dp = cx.device;            // raw peripheral access
+        let clocks = dp.RCC.configure().sysclk(168.MHz()).freeze();
+        let led = dp.GPIOA.pa5.into_push_pull_output();
+        let timer = dp.TIM2.counter_hz(&clocks);
+
+        let executor = Executor::open(&config).unwrap();
+        // Set up subscriptions, publishers, timers on the executor...
+
+        // Start the 30 Hz control loop
+        control_loop::spawn().unwrap();
+
+        (Shared { executor, watchdog_ok: true },
+         Local { led, timer })
+    }
+
+    // ── Priority 1: network I/O (lowest priority — preemptible) ──
+    #[task(shared = [executor], priority = 1)]
+    async fn net_poll(mut cx: net_poll::Context) {
+        loop {
+            cx.shared.executor.lock(|exec| exec.spin_once(0));
+            Mono::delay(1.millis()).await;   // yield to other tasks
+        }
+    }
+
+    // ── Priority 2: 30 Hz control loop ──
+    #[task(shared = [executor, watchdog_ok], local = [led], priority = 2)]
+    async fn control_loop(mut cx: control_loop::Context) {
+        loop {
+            let ok = cx.shared.watchdog_ok.lock(|w| *w);
+            if !ok {
+                // MRM: bring vehicle to emergency stop
+                cx.local.led.set_high();     // diagnostic indicator
+            }
+            cx.shared.executor.lock(|exec| exec.run_control_cycle());
+            Mono::delay(33.millis()).await;   // 30 Hz
+        }
+    }
+
+    // ── Priority 3: brake safety check (highest — never delayed) ──
+    #[task(shared = [watchdog_ok], priority = 3)]
+    async fn brake_check(mut cx: brake_check::Context) {
+        // This task preempts everything else — guaranteed to run
+        cx.shared.watchdog_ok.lock(|w| {
+            *w = check_heartbeat_within_deadline();
+        });
+    }
+}
+```
+
+**What happens at runtime:**
+
+```
+Time ──────────────────────────────────────────────────────────►
+
+Priority 3  ·········█·····················█·················█···
+             (brake)  ↑ preempts           ↑ preempts
+Priority 2  ···██████·█████████████████████·███████████████··████
+             (control loop, runs every 33ms)
+Priority 1  ██·······························█████████████████···
+             (net_poll, runs whenever higher priorities are idle)
+```
+
+- `brake_check` at priority 3 **always preempts** — it cannot be delayed by any other task
+- `control_loop` at priority 2 preempts `net_poll` but yields to `brake_check`
+- `net_poll` at priority 1 runs in the gaps, handling incoming/outgoing Zenoh messages
+- All three tasks share **one stack** — no per-task stack allocation needed
+
+### 5.4 Benefits of This Architecture
+
+**For certification:**
+- The entire binary is one compilation unit — whole-program analysis is possible
+- No OS kernel to qualify (IEC 61508 / ISO 26262 tool qualification)
+- Stack usage is statically bounded (single stack, analyzable by tools like `cargo-call-stack`)
+- Interrupt latency is bounded by hardware — no kernel jitter
+
+**For reliability:**
+- No heap → no fragmentation, no out-of-memory at runtime
+- No threads → no deadlocks, no priority inversion (proven by SRP [5])
+- No dynamic dispatch → every code path is visible to the compiler and verifier
+
+**For performance:**
+- Context switch = hardware interrupt entry (~12 cycles on Cortex-M, ~0 on Cortex-R)
+- No syscall overhead — peripheral access is a direct memory-mapped register write
+- Entire binary fits in flash + SRAM (typically 64–256 KB)
+- Boot to operational: <10 ms (no OS init, no service discovery wait)
+
+**For development:**
+- Same Rust `async/await` syntax as desktop — familiar to systems programmers
+- Full test suite runs on the host (`cargo test`) — no hardware needed for logic testing
+- QEMU emulation for integration testing before hardware is available
 
 ---
 
