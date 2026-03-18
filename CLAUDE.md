@@ -115,11 +115,11 @@ vars explicitly.
 
 | Variable | Default | Sentinel Value | Purpose |
 |----------|---------|----------------|---------|
-| `ZPICO_MAX_PUBLISHERS` | 8 | 36 | Max zenoh-pico publishers |
+| `ZPICO_MAX_PUBLISHERS` | 8 | 40 | Max zenoh-pico publishers |
 | `ZPICO_MAX_SUBSCRIBERS` | 8 | 16 | Max zenoh-pico subscribers |
-| `ZPICO_MAX_LIVELINESS` | 8 | 52 | Max liveliness tokens |
+| `ZPICO_MAX_LIVELINESS` | 8 | 64 | Max liveliness tokens |
 | `NROS_MAX_PARAMETERS` | 32 | 64 | Max ROS 2 parameters |
-| `NROS_EXECUTOR_MAX_CBS` | 4 | 52 | Max executor callback slots |
+| `NROS_EXECUTOR_MAX_CBS` | 4 | 64 | Max executor callback slots |
 
 The test fixture (`tests/src/fixtures/sentinel.rs`) sets these same values when building
 the sentinel binary during integration tests. Keep them in sync.

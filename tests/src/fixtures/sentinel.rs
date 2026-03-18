@@ -25,11 +25,11 @@ pub fn build_sentinel() -> TestResult<&'static Path> {
 
             let output = Command::new("cargo")
                 .args(["build"])
-                .env("ZPICO_MAX_PUBLISHERS", "36")
+                .env("ZPICO_MAX_PUBLISHERS", "40")
                 .env("ZPICO_MAX_SUBSCRIBERS", "16")
-                .env("ZPICO_MAX_LIVELINESS", "52")
+                .env("ZPICO_MAX_LIVELINESS", "64")
                 .env("NROS_MAX_PARAMETERS", "64")
-                .env("NROS_EXECUTOR_MAX_CBS", "52")
+                .env("NROS_EXECUTOR_MAX_CBS", "64")
                 .current_dir(&crate_dir)
                 .output()
                 .map_err(|e| TestError::BuildFailed(format!("cargo build failed to start: {e}")))?;

@@ -224,14 +224,11 @@ All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` (already generated).
 
 ### 12.7 — Capacity updates
 
-- [ ] 12.7a — Update executor and zpico capacity limits
-  - Current: 32 publishers, 52 callback slots
-  - New publishers: +5 (items 1–3, 8, 15) → 37 publishers
-  - New services: +9 (items 4–7, 9–14) → 10 services
-  - Total callbacks: 37 pub + 10 sub + 1 timer + 10 svc = 58 slots
-  - Update `.env`: `ZPICO_MAX_PUBLISHERS=40`, `NROS_EXECUTOR_MAX_CBS=64`
-  - Update `tests/src/fixtures/sentinel.rs` to match
-  - Update Zephyr Kconfig defaults if needed
+- [x] 12.7a — Update executor and zpico capacity limits
+  - Actual counts: 37 pub + 9 sub + 1 timer + 11 svc = 58 callbacks; 57 liveliness tokens
+  - `.env`: `ZPICO_MAX_PUBLISHERS=40`, `ZPICO_MAX_LIVELINESS=64`, `NROS_EXECUTOR_MAX_CBS=64`
+  - `tests/src/fixtures/sentinel.rs` updated to match
+  - Zephyr `prj.conf` unchanged (Zephyr sentinel is a separate application with fewer topics)
 
 ### 12.8 — Integration test
 
