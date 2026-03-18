@@ -297,6 +297,7 @@ dependencies = [
  "log",
  "nav_msgs",
  "nros",
+ "std_srvs",
  "tier4_control_msgs",
  "tier4_external_api_msgs",
  "tier4_system_msgs",
@@ -818,7 +819,7 @@ dependencies = [
 
 [[package]]
 name = "nros-builtin-interfaces"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "heapless",
  "nros-core",
@@ -868,7 +869,7 @@ dependencies = [
 
 [[package]]
 name = "nros-rcl-interfaces"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "heapless",
  "nros-builtin-interfaces",
@@ -1141,6 +1142,15 @@ name = "std_msgs"
 version = "4.9.1"
 dependencies = [
  "builtin_interfaces",
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
+name = "std_srvs"
+version = "4.9.1"
+dependencies = [
  "heapless",
  "nros-core",
  "nros-serdes",
@@ -1653,7 +1663,3 @@ version = "1.12.0"
 [[patch.unused]]
 name = "autoware_perception_msgs"
 version = "1.11.0"
-
-[[patch.unused]]
-name = "std_srvs"
-version = "4.9.1"

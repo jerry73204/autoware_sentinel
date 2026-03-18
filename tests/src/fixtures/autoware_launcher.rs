@@ -86,17 +86,32 @@ pub fn dump_autoware_record() -> TestResult<&'static Path> {
 pub struct NodeFilter {
     /// Node names to remove from the `node[]` array
     pub node_names: Vec<String>,
+    /// Package names to remove from the `node[]` array (for nodes with null name)
+    pub node_packages: Vec<String>,
     /// Container names to remove from the `container[]` array
     pub container_names: Vec<String>,
     /// Package names to remove from the `load_node[]` array
     pub load_node_packages: Vec<String>,
+    /// (package, node_name) pairs to remove from the `load_node[]` array
+    pub load_node_pairs: Vec<(String, String)>,
 }
 
 impl NodeFilter {
-    /// Create a filter for the 7 nodes replaced by the sentinel.
+    /// Create a filter for sentinel-replaced nodes plus diagnostic/ADAPI nodes
+    /// whose health-checking would block autonomous mode engagement.
     pub fn sentinel_replacement() -> Self {
         Self {
-            node_names: vec!["mrm_handler".into()],
+            node_names: vec![
+                "mrm_handler".into(),
+                "hazard_status_converter".into(),
+            ],
+            node_packages: vec![
+                // aggregator_node + converter_node — publishes
+                // /system/operation_mode/availability based on diagnostic
+                // heartbeats; blocks engagement when sentinel replaces
+                // vehicle_cmd_gate (heartbeat goes missing)
+                "autoware_diagnostic_graph_aggregator".into(),
+            ],
             container_names: vec![
                 "mrm_emergency_stop_operator_container".into(),
                 "mrm_comfortable_stop_operator_container".into(),
@@ -106,6 +121,13 @@ impl NodeFilter {
                 "autoware_shift_decider".into(),
                 "autoware_operation_mode_transition_manager".into(),
                 "autoware_control_validator".into(),
+            ],
+            load_node_pairs: vec![
+                // ADAPI adaptors whose services conflict with sentinel's own
+                ("autoware_default_adapi_universe".into(), "operation_mode".into()),
+                ("autoware_default_adapi_universe".into(), "autoware_state".into()),
+                ("autoware_default_adapi_universe".into(), "diagnostics".into()),
+                ("autoware_default_adapi".into(), "interface".into()),
             ],
         }
     }
@@ -126,14 +148,18 @@ pub fn filter_record(
     let mut record: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| TestError::ProcessFailed(format!("Failed to parse record JSON: {e}")))?;
 
-    // Filter node[] — match by "name" field (may include namespace prefix)
+    // Filter node[] — match by "name" field or "package" field
     if let Some(nodes) = record.get_mut("node").and_then(|v| v.as_array_mut()) {
         let filter_names = &filter.node_names;
+        let filter_packages = &filter.node_packages;
         nodes.retain(|node| {
             let name = node.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let package = node.get("package").and_then(|v| v.as_str()).unwrap_or("");
             // Match against full name or just the trailing component
             let base_name = name.rsplit('/').next().unwrap_or(name);
-            !filter_names.iter().any(|f| f == base_name || f == name)
+            let name_match = filter_names.iter().any(|f| f == base_name || f == name);
+            let package_match = filter_packages.iter().any(|f| f == package);
+            !name_match && !package_match
         });
     }
 
@@ -147,15 +173,24 @@ pub fn filter_record(
         });
     }
 
-    // Filter load_node[] — match by "package" field
+    // Filter load_node[] — match by "package" field or (package, node_name) pair
     if let Some(load_nodes) = record.get_mut("load_node").and_then(|v| v.as_array_mut()) {
         let filter_packages = &filter.load_node_packages;
+        let filter_pairs = &filter.load_node_pairs;
         load_nodes.retain(|load_node| {
             let package = load_node
                 .get("package")
                 .and_then(|v| v.as_str())
                 .unwrap_or("");
-            !filter_packages.iter().any(|f| f == package)
+            let node_name = load_node
+                .get("node_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let package_match = filter_packages.iter().any(|f| f == package);
+            let pair_match = filter_pairs
+                .iter()
+                .any(|(p, n)| p == package && n == node_name);
+            !package_match && !pair_match
         });
     }
 

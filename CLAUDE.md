@@ -65,6 +65,7 @@ autoware-nano-ros/
 │   └── zephyr/
 │       └── setup.sh                 # Zephyr workspace initialization
 ├── west.yml                         # Zephyr west manifest
+├── .env                             # Build-time env vars (loaded by justfile)
 ├── justfile                         # Root convenience recipes
 ├── autoware-repo -> ~/repos/autoware/1.5.0-ws  # Autoware source (symlink)
 └── CLAUDE.md                        # This file
@@ -104,6 +105,24 @@ just verify             # run all verification (Kani + Verus)
 ```
 
 All algorithm crates must be `#![no_std]` and cross-compile to `thumbv7em-none-eabihf`.
+
+## Build-Time Environment Variables (`.env`)
+
+The root `.env` file configures compile-time capacity limits for zpico and nros. The
+justfile loads it automatically via `set dotenv-load`. When building manually (e.g.,
+`cargo build` in `src/autoware_sentinel_linux/`), either source the `.env` or pass the
+vars explicitly.
+
+| Variable | Default | Sentinel Value | Purpose |
+|----------|---------|----------------|---------|
+| `ZPICO_MAX_PUBLISHERS` | 8 | 36 | Max zenoh-pico publishers |
+| `ZPICO_MAX_SUBSCRIBERS` | 8 | 16 | Max zenoh-pico subscribers |
+| `ZPICO_MAX_LIVELINESS` | 8 | 52 | Max liveliness tokens |
+| `NROS_MAX_PARAMETERS` | 32 | 64 | Max ROS 2 parameters |
+| `NROS_EXECUTOR_MAX_CBS` | 4 | 52 | Max executor callback slots |
+
+The test fixture (`tests/src/fixtures/sentinel.rs`) sets these same values when building
+the sentinel binary during integration tests. Keep them in sync.
 
 ## Message Generation
 

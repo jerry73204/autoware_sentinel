@@ -53,6 +53,7 @@ tier4_control_msgs = { version = "*", default-features = false }
 tier4_external_api_msgs = { version = "*", default-features = false }
 tier4_system_msgs = { version = "*", default-features = false }
 tier4_vehicle_msgs = { version = "*", default-features = false }
+std_srvs = { version = "*", default-features = false }
 visualization_msgs = { version = "*", default-features = false }
 
 # Debug message crates (Phase 8.2)

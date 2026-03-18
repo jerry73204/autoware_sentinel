@@ -77,9 +77,13 @@ use autoware_vehicle_msgs::msg::{
 };
 use geometry_msgs::msg::{Accel, AccelWithCovarianceStamped, Twist};
 use nav_msgs::msg::Odometry;
-use tier4_control_msgs::msg::{GateMode, IsStopped};
+use tier4_control_msgs::msg::{GateMode, IsPaused, IsStartRequested, IsStopped};
 use tier4_external_api_msgs::msg::Emergency;
+use tier4_external_api_msgs::srv::{
+    Engage as EngageSrv, EngageResponse, SetEmergency, SetEmergencyResponse,
+};
 use tier4_system_msgs::msg::{MrmBehaviorStatus, OperationModeAvailability};
+use std_srvs::srv::{Trigger, TriggerResponse};
 use tier4_vehicle_msgs::msg::VehicleEmergencyStamped;
 
 // Debug/diagnostic message types (Phase 8.2)
@@ -117,6 +121,9 @@ const MRM_BEHAVIOR_OPERATING: u8 = 2;
 
 /// GateMode constant: AUTO.
 const GATE_MODE_AUTO: u8 = 0;
+
+/// tier4_external_api_msgs ResponseStatus: SUCCESS.
+const TIER4_RESPONSE_SUCCESS: u32 = 1;
 
 // ============================================================================
 // Static shared state
@@ -185,6 +192,8 @@ struct SafetyIsland {
     /// True after `/api/operation_mode/change_to_autonomous` service is called.
     /// Mirrors standard Autoware: starts in STOP, transitions to AUTONOMOUS on request.
     autonomous_engaged: bool,
+    /// True when external emergency stop has been triggered via service.
+    external_emergency_stop: bool,
 }
 
 static ISLAND: SyncRefCell<Option<SafetyIsland>> = SyncRefCell(RefCell::new(None));
@@ -259,6 +268,7 @@ impl SafetyIsland {
             has_external_control: false,
             last_external_control_ms: 0,
             autonomous_engaged: false,
+            external_emergency_stop: false,
         }
     }
 
@@ -472,6 +482,10 @@ fn run() -> Result<(), NodeError> {
         // Phase 8.2c — Remaining debug (topics 14–15)
         op_mode_debug_pub,
         published_time_pub,
+        // Phase 12.1 — Missing vehicle_cmd_gate topics
+        is_paused_pub,
+        is_start_requested_pub,
+        current_gate_mode_pub,
     ) = {
         let mut node = executor.create_node("sentinel")?;
         (
@@ -538,6 +552,12 @@ fn run() -> Result<(), NodeError> {
             node.create_publisher::<PublishedTime>(
                 "/control/command/control_cmd/debug/published_time",
             )?,
+            // 12.1 — Missing vehicle_cmd_gate topics
+            node.create_publisher::<IsPaused>("/control/vehicle_cmd_gate/is_paused")?,
+            node.create_publisher::<IsStartRequested>(
+                "/control/vehicle_cmd_gate/is_start_requested",
+            )?,
+            node.create_publisher::<GateMode>("/control/current_gate_mode")?,
         )
     };
 
@@ -615,6 +635,82 @@ fn run() -> Result<(), NodeError> {
         },
     )?;
     info!("Service: /api/operation_mode/change_to_autonomous");
+
+    // ====================================================================
+    // Phase 12.2 — Vehicle command gate services
+    // ====================================================================
+
+    // 12.2a — /api/autoware/set/engage (tier4_external_api_msgs/srv/Engage)
+    executor.add_service::<EngageSrv, _>("/api/autoware/set/engage", |request| {
+        with_island(|island| {
+            island.autonomous_engaged = request.engage;
+            info!(
+                "set/engage: {}",
+                if request.engage { "ENGAGED" } else { "DISENGAGED" }
+            );
+        });
+        EngageResponse {
+            status: tier4_external_api_msgs::msg::ResponseStatus {
+                code: TIER4_RESPONSE_SUCCESS,
+                message: Default::default(),
+            },
+        }
+    })?;
+    info!("Service: /api/autoware/set/engage");
+
+    // 12.2b — /api/autoware/set/emergency (tier4_external_api_msgs/srv/SetEmergency)
+    executor.add_service::<SetEmergency, _>("/api/autoware/set/emergency", |request| {
+        with_island(|island| {
+            island.external_emergency_stop = request.emergency;
+            info!(
+                "set/emergency: {}",
+                if request.emergency {
+                    "EMERGENCY SET"
+                } else {
+                    "EMERGENCY CLEARED"
+                }
+            );
+        });
+        SetEmergencyResponse {
+            status: tier4_external_api_msgs::msg::ResponseStatus {
+                code: TIER4_RESPONSE_SUCCESS,
+                message: Default::default(),
+            },
+        }
+    })?;
+    info!("Service: /api/autoware/set/emergency");
+
+    // 12.2c — /control/vehicle_cmd_gate/external_emergency_stop (std_srvs/srv/Trigger)
+    executor.add_service::<Trigger, _>(
+        "/control/vehicle_cmd_gate/external_emergency_stop",
+        |_request| {
+            with_island(|island| {
+                island.external_emergency_stop = true;
+                info!("external_emergency_stop: TRIGGERED");
+            });
+            TriggerResponse {
+                success: true,
+                message: Default::default(),
+            }
+        },
+    )?;
+    info!("Service: /control/vehicle_cmd_gate/external_emergency_stop");
+
+    // 12.2d — /control/vehicle_cmd_gate/clear_external_emergency_stop (std_srvs/srv/Trigger)
+    executor.add_service::<Trigger, _>(
+        "/control/vehicle_cmd_gate/clear_external_emergency_stop",
+        |_request| {
+            with_island(|island| {
+                island.external_emergency_stop = false;
+                info!("external_emergency_stop: CLEARED");
+            });
+            TriggerResponse {
+                success: true,
+                message: Default::default(),
+            }
+        },
+    )?;
+    info!("Service: /control/vehicle_cmd_gate/clear_external_emergency_stop");
 
     // ====================================================================
     // 30 Hz main control timer
@@ -701,9 +797,10 @@ fn run() -> Result<(), NodeError> {
 
             // ── Command output ─────────────────────────────────────────
 
-            island
-                .cmd_gate
-                .set_system_emergency(island.mrm_handler.state() == MRM_STATE_OPERATING);
+            island.cmd_gate.set_system_emergency(
+                island.mrm_handler.state() == MRM_STATE_OPERATING
+                    || island.external_emergency_stop,
+            );
             island
                 .cmd_gate
                 .set_current_speed(island.current_velocity as f32);
@@ -829,10 +926,12 @@ fn run() -> Result<(), NodeError> {
                 .ok();
 
             // 8.1c — Vehicle command gate additional
+            let is_emergency = island.mrm_handler.state() == MRM_STATE_OPERATING
+                || island.external_emergency_stop;
             emergency_cmd_pub
                 .publish(&VehicleEmergencyStamped {
                     stamp: Default::default(),
-                    emergency: island.mrm_handler.state() == MRM_STATE_OPERATING,
+                    emergency: is_emergency,
                 })
                 .ok();
             gate_mode_pub
@@ -885,7 +984,7 @@ fn run() -> Result<(), NodeError> {
             emergency_api_pub
                 .publish(&Emergency {
                     stamp: Default::default(),
-                    emergency: island.mrm_handler.state() == MRM_STATE_OPERATING,
+                    emergency: is_emergency,
                 })
                 .ok();
 
@@ -983,6 +1082,25 @@ fn run() -> Result<(), NodeError> {
                 .publish(&PublishedTime {
                     header: Default::default(),
                     published_stamp: Default::default(),
+                })
+                .ok();
+
+            // ── Phase 12.1 — Missing vehicle_cmd_gate topics ────────────
+            is_paused_pub
+                .publish(&IsPaused {
+                    stamp: Default::default(),
+                    data: false, // sentinel never pauses control output
+                })
+                .ok();
+            is_start_requested_pub
+                .publish(&IsStartRequested {
+                    stamp: Default::default(),
+                    data: false,
+                })
+                .ok();
+            current_gate_mode_pub
+                .publish(&GateMode {
+                    data: GATE_MODE_AUTO, // sentinel always uses autonomous control
                 })
                 .ok();
         });

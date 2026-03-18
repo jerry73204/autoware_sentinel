@@ -36,20 +36,20 @@ Nodes with full coverage are listed for completeness.
 
 **Missing topics:**
 
-| # | Topic | Message Type | Notes |
-|---|-------|-------------|-------|
-| 1 | `/control/vehicle_cmd_gate/is_paused` | `tier4_control_msgs/msg/IsPaused` | Consumed by `motion` ADAPI adaptor |
-| 2 | `/control/vehicle_cmd_gate/is_start_requested` | `tier4_control_msgs/msg/IsStartRequested` | Consumed by `motion` ADAPI adaptor |
-| 3 | `/control/current_gate_mode` | `tier4_control_msgs/msg/GateMode` | No remaining consumer; published for external tools |
+| # | Topic                                          | Message Type                              | Notes                                               |
+|---|------------------------------------------------|-------------------------------------------|-----------------------------------------------------|
+| 1 | `/control/vehicle_cmd_gate/is_paused`          | `tier4_control_msgs/msg/IsPaused`         | Consumed by `motion` ADAPI adaptor                  |
+| 2 | `/control/vehicle_cmd_gate/is_start_requested` | `tier4_control_msgs/msg/IsStartRequested` | Consumed by `motion` ADAPI adaptor                  |
+| 3 | `/control/current_gate_mode`                   | `tier4_control_msgs/msg/GateMode`         | No remaining consumer; published for external tools |
 
 **Missing services:**
 
-| # | Service | Service Type | Notes |
-|---|---------|-------------|-------|
-| 4 | `/api/autoware/set/engage` | `tier4_external_api_msgs/srv/Engage` | Engage/disengage the vehicle |
-| 5 | `/api/autoware/set/emergency` | `tier4_external_api_msgs/srv/SetEmergency` | Set/clear external emergency |
-| 6 | `/control/vehicle_cmd_gate/external_emergency_stop` | `std_srvs/srv/Trigger` | Trigger external emergency stop |
-| 7 | `/control/vehicle_cmd_gate/clear_external_emergency_stop` | `std_srvs/srv/Trigger` | Clear external emergency stop |
+| # | Service                                                   | Service Type                               | Notes                           |
+|---|-----------------------------------------------------------|--------------------------------------------|---------------------------------|
+| 4 | `/api/autoware/set/engage`                                | `tier4_external_api_msgs/srv/Engage`       | Engage/disengage the vehicle    |
+| 5 | `/api/autoware/set/emergency`                             | `tier4_external_api_msgs/srv/SetEmergency` | Set/clear external emergency    |
+| 6 | `/control/vehicle_cmd_gate/external_emergency_stop`       | `std_srvs/srv/Trigger`                     | Trigger external emergency stop |
+| 7 | `/control/vehicle_cmd_gate/clear_external_emergency_stop` | `std_srvs/srv/Trigger`                     | Clear external emergency stop   |
 
 #### `shift_decider` — fully covered
 
@@ -61,10 +61,10 @@ Sentinel publishes `/control/shift_decider/gear_cmd`. No services.
 
 **Missing:**
 
-| # | Topic/Service | Type | Notes |
-|---|--------------|------|-------|
-| 8 | `/control/is_autonomous_available` (topic) | `tier4_system_msgs/msg/ModeChangeAvailable` | No remaining consumer |
-| 9 | `/control/control_mode_request` (service) | `autoware_vehicle_msgs/srv/ControlModeCommand` | Client to vehicle interface; sentinel can stub it |
+| # | Topic/Service                              | Type                                           | Notes                                             |
+|---|--------------------------------------------|------------------------------------------------|---------------------------------------------------|
+| 8 | `/control/is_autonomous_available` (topic) | `tier4_system_msgs/msg/ModeChangeAvailable`    | No remaining consumer                             |
+| 9 | `/control/control_mode_request` (service)  | `autoware_vehicle_msgs/srv/ControlModeCommand` | Client to vehicle interface; sentinel can stub it |
 
 #### `control_validator` — fully covered
 
@@ -78,13 +78,13 @@ No services.
 
 **Missing services:**
 
-| # | Service | Service Type | Notes |
-|---|---------|-------------|-------|
-| 10 | `/api/operation_mode/change_to_stop` | `ChangeOperationMode` | All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` |
-| 11 | `/api/operation_mode/change_to_local` | `ChangeOperationMode` | |
-| 12 | `/api/operation_mode/change_to_remote` | `ChangeOperationMode` | |
-| 13 | `/api/operation_mode/enable_autoware_control` | `ChangeOperationMode` | |
-| 14 | `/api/operation_mode/disable_autoware_control` | `ChangeOperationMode` | |
+| #  | Service                                        | Service Type          | Notes                                                    |
+|----|------------------------------------------------|-----------------------|----------------------------------------------------------|
+| 10 | `/api/operation_mode/change_to_stop`           | `ChangeOperationMode` | All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` |
+| 11 | `/api/operation_mode/change_to_local`          | `ChangeOperationMode` |                                                          |
+| 12 | `/api/operation_mode/change_to_remote`         | `ChangeOperationMode` |                                                          |
+| 13 | `/api/operation_mode/enable_autoware_control`  | `ChangeOperationMode` |                                                          |
+| 14 | `/api/operation_mode/disable_autoware_control` | `ChangeOperationMode` |                                                          |
 
 #### `autoware_state` ADAPI adaptor — fully covered
 
@@ -98,8 +98,8 @@ Sentinel publishes `/autoware/state`. The `shutdown` service is out of scope
 
 **Missing:**
 
-| # | Topic | Type | Notes |
-|---|-------|------|-------|
+| #  | Topic                       | Type                                          | Notes                                                                        |
+|----|-----------------------------|-----------------------------------------------|------------------------------------------------------------------------------|
 | 15 | `/system/emergency_holding` | `tier4_system_msgs/msg/EmergencyHoldingState` | Consumed by `hazard_status_converter` (also filtered); no remaining consumer |
 
 #### `diagnostic_graph_aggregator` — not required
@@ -128,51 +128,46 @@ Only serves `/api/interface/version` (returns ADAPI version string). Out of scop
 
 ### Summary
 
-| Category | Count | Items |
-|----------|-------|-------|
-| Missing topics | 5 | #1–3 (gate), #8 (op_mode), #15 (mrm_handler) |
-| Missing services | 9 | #4–7 (gate), #9 (op_mode_transition), #10–14 (op_mode ADAPI) |
-| Not required | 8 topics, 2 services | diagnostic chain, hazard_status, ADAPI diagnostics/interface |
+| Category         | Count                | Items                                                        |
+|------------------|----------------------|--------------------------------------------------------------|
+| Missing topics   | 5                    | #1–3 (gate), #8 (op_mode), #15 (mrm_handler)                 |
+| Missing services | 9                    | #4–7 (gate), #9 (op_mode_transition), #10–14 (op_mode ADAPI) |
+| Not required     | 8 topics, 2 services | diagnostic chain, hazard_status, ADAPI diagnostics/interface |
 
 ## Work Items
 
 ### 12.1 — Missing `vehicle_cmd_gate` topics (3 publishers)
 
-- [ ] 12.1a — Publish `IsPaused` on `/control/vehicle_cmd_gate/is_paused`
+- [x] 12.1a — Publish `IsPaused` on `/control/vehicle_cmd_gate/is_paused`
   - Value: `is_paused: false` (sentinel never pauses control output)
-  - **Requires:** `tier4_control_msgs` message generation (check if available)
+  - `tier4_control_msgs` already generated
 
-- [ ] 12.1b — Publish `IsStartRequested` on `/control/vehicle_cmd_gate/is_start_requested`
+- [x] 12.1b — Publish `IsStartRequested` on `/control/vehicle_cmd_gate/is_start_requested`
   - Value: `is_start_requested: false`
-  - **Requires:** `tier4_control_msgs` message generation
 
-- [ ] 12.1c — Publish `GateMode` on `/control/current_gate_mode`
+- [x] 12.1c — Publish `GateMode` on `/control/current_gate_mode`
   - Value: `data: AUTO` (sentinel always uses autonomous control)
-  - **Note:** Sentinel already publishes `/control/gate_mode_cmd` with `GateMode`.
-    This is a different topic (`current_gate_mode` vs `gate_mode_cmd`).
-  - **Requires:** Check if `tier4_control_msgs/msg/GateMode` is the correct type
-    (vs `autoware_vehicle_cmd_gate_msgs/msg/GateMode`)
+  - Uses `tier4_control_msgs/msg/GateMode` (same type as `/control/gate_mode_cmd`)
 
 ### 12.2 — Missing `vehicle_cmd_gate` services (4 services)
 
-- [ ] 12.2a — Serve `/api/autoware/set/engage`
+- [x] 12.2a — Serve `/api/autoware/set/engage`
   - Type: `tier4_external_api_msgs/srv/Engage`
   - Behavior: Set `autonomous_engaged` flag (same effect as `change_to_autonomous`)
-  - **Requires:** `tier4_external_api_msgs` service generation
+  - `tier4_external_api_msgs` already generated
 
-- [ ] 12.2b — Serve `/api/autoware/set/emergency`
+- [x] 12.2b — Serve `/api/autoware/set/emergency`
   - Type: `tier4_external_api_msgs/srv/SetEmergency`
-  - Behavior: Set/clear external emergency state in sentinel
-  - **Requires:** `tier4_external_api_msgs` service generation
+  - Behavior: Set/clear `external_emergency_stop` state; wired to gate + emergency publishers
 
-- [ ] 12.2c — Serve `/control/vehicle_cmd_gate/external_emergency_stop`
+- [x] 12.2c — Serve `/control/vehicle_cmd_gate/external_emergency_stop`
   - Type: `std_srvs/srv/Trigger`
-  - Behavior: Trigger external emergency stop
-  - **Requires:** `std_srvs` service generation (may already be available)
+  - Behavior: Set `external_emergency_stop = true`
+  - Added `std_srvs` to `Cargo.toml`
 
-- [ ] 12.2d — Serve `/control/vehicle_cmd_gate/clear_external_emergency_stop`
+- [x] 12.2d — Serve `/control/vehicle_cmd_gate/clear_external_emergency_stop`
   - Type: `std_srvs/srv/Trigger`
-  - Behavior: Clear external emergency stop state
+  - Behavior: Set `external_emergency_stop = false`
 
 ### 12.3 — Missing `operation_mode_transition_manager` topic and service
 

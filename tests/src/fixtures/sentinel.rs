@@ -25,7 +25,7 @@ pub fn build_sentinel() -> TestResult<&'static Path> {
 
             let output = Command::new("cargo")
                 .args(["build"])
-                .env("ZPICO_MAX_PUBLISHERS", "32")
+                .env("ZPICO_MAX_PUBLISHERS", "36")
                 .env("ZPICO_MAX_SUBSCRIBERS", "16")
                 .env("ZPICO_MAX_LIVELINESS", "52")
                 .env("NROS_MAX_PARAMETERS", "64")
