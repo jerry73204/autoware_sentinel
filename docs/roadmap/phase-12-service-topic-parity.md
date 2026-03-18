@@ -201,7 +201,7 @@ All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` (already generated).
 
 ### 12.5 — Missing `mrm_handler` topic
 
-- [ ] 12.5a — Publish `EmergencyHoldingState` on `/system/emergency_holding`
+- [x] 12.5a — Publish `EmergencyHoldingState` on `/system/emergency_holding`
   - Value: `state: NONE` (sentinel doesn't use emergency holding)
   - **Requires:** `tier4_system_msgs/msg/EmergencyHoldingState` (check if available)
 

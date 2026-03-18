@@ -82,7 +82,7 @@ use tier4_external_api_msgs::msg::Emergency;
 use tier4_external_api_msgs::srv::{
     Engage as EngageSrv, EngageResponse, SetEmergency, SetEmergencyResponse,
 };
-use tier4_system_msgs::msg::{ModeChangeAvailable, MrmBehaviorStatus, OperationModeAvailability};
+use tier4_system_msgs::msg::{EmergencyHoldingState, ModeChangeAvailable, MrmBehaviorStatus, OperationModeAvailability};
 use std_srvs::srv::{Trigger, TriggerResponse};
 use autoware_vehicle_msgs::srv::{ControlModeCommand, ControlModeCommandResponse};
 use tier4_vehicle_msgs::msg::VehicleEmergencyStamped;
@@ -489,6 +489,8 @@ fn run() -> Result<(), NodeError> {
         current_gate_mode_pub,
         // Phase 12.3 — Missing operation_mode_transition_manager topic
         is_autonomous_available_pub,
+        // Phase 12.5 — Missing mrm_handler topic
+        emergency_holding_pub,
     ) = {
         let mut node = executor.create_node("sentinel")?;
         (
@@ -563,6 +565,8 @@ fn run() -> Result<(), NodeError> {
             node.create_publisher::<GateMode>("/control/current_gate_mode")?,
             // 12.3 — Missing operation_mode_transition_manager topic
             node.create_publisher::<ModeChangeAvailable>("/control/is_autonomous_available")?,
+            // 12.5 — Missing mrm_handler topic
+            node.create_publisher::<EmergencyHoldingState>("/system/emergency_holding")?,
         )
     };
 
@@ -1196,6 +1200,14 @@ fn run() -> Result<(), NodeError> {
                 .publish(&ModeChangeAvailable {
                     stamp: Default::default(),
                     available: island.autonomous_engaged,
+                })
+                .ok();
+
+            // ── Phase 12.5 — Missing mrm_handler topic ───────────────────
+            emergency_holding_pub
+                .publish(&EmergencyHoldingState {
+                    stamp: Default::default(),
+                    is_holding: false, // sentinel doesn't use emergency holding
                 })
                 .ok();
         });
