@@ -1,0 +1,289 @@
+# Phase 12: Service & Topic Parity
+
+**Status:** Not started
+**Depends on:** Phase 8 (topic parity), Phase 7 (integration testing)
+**Goal:** The sentinel must publish every topic and serve every service that the
+filtered-out Autoware nodes provide, even if no remaining node currently consumes them.
+This ensures full behavioral equivalence so Autoware can be upgraded or reconfigured
+without silent regressions from missing interfaces.
+
+## Background
+
+Phase 8 achieved `ros2 topic list` parity (555 topics, 0 diff). However, a detailed
+audit of filtered nodes reveals gaps in two categories:
+
+1. **Missing publishers** — topics that filtered nodes publish but the sentinel does not.
+   These topics have no remaining consumers today, but external tools or future Autoware
+   nodes may depend on them.
+2. **Missing services** — service servers that filtered nodes provide. External API clients
+   (e.g. Autoware Web UI, fleet management) expect these services to exist.
+
+## Gap Analysis
+
+### Node-by-node audit
+
+Each filtered node was audited against the sentinel's publishers and services.
+Nodes with full coverage are listed for completeness.
+
+#### `vehicle_cmd_gate` — 3 missing topics, 4 missing services
+
+**Covered by sentinel (9 topics, 0 services):**
+`/control/command/control_cmd`, `/control/command/gear_cmd`,
+`/control/command/turn_indicators_cmd`, `/control/command/hazard_lights_cmd`,
+`/control/command/emergency_cmd`, `/control/vehicle_cmd_gate/operation_mode`,
+`/control/vehicle_cmd_gate/is_stopped`, `/api/autoware/get/engage`,
+`/api/autoware/get/emergency`
+
+**Missing topics:**
+
+| # | Topic | Message Type | Notes |
+|---|-------|-------------|-------|
+| 1 | `/control/vehicle_cmd_gate/is_paused` | `tier4_control_msgs/msg/IsPaused` | Consumed by `motion` ADAPI adaptor |
+| 2 | `/control/vehicle_cmd_gate/is_start_requested` | `tier4_control_msgs/msg/IsStartRequested` | Consumed by `motion` ADAPI adaptor |
+| 3 | `/control/current_gate_mode` | `tier4_control_msgs/msg/GateMode` | No remaining consumer; published for external tools |
+
+**Missing services:**
+
+| # | Service | Service Type | Notes |
+|---|---------|-------------|-------|
+| 4 | `/api/autoware/set/engage` | `tier4_external_api_msgs/srv/Engage` | Engage/disengage the vehicle |
+| 5 | `/api/autoware/set/emergency` | `tier4_external_api_msgs/srv/SetEmergency` | Set/clear external emergency |
+| 6 | `/control/vehicle_cmd_gate/external_emergency_stop` | `std_srvs/srv/Trigger` | Trigger external emergency stop |
+| 7 | `/control/vehicle_cmd_gate/clear_external_emergency_stop` | `std_srvs/srv/Trigger` | Clear external emergency stop |
+
+#### `shift_decider` — fully covered
+
+Sentinel publishes `/control/shift_decider/gear_cmd`. No services.
+
+#### `operation_mode_transition_manager` — 1 missing topic, 1 missing service
+
+**Covered:** `/system/operation_mode/state` (published by sentinel)
+
+**Missing:**
+
+| # | Topic/Service | Type | Notes |
+|---|--------------|------|-------|
+| 8 | `/control/is_autonomous_available` (topic) | `tier4_system_msgs/msg/ModeChangeAvailable` | No remaining consumer |
+| 9 | `/control/control_mode_request` (service) | `autoware_vehicle_msgs/srv/ControlModeCommand` | Client to vehicle interface; sentinel can stub it |
+
+#### `control_validator` — fully covered
+
+Sentinel publishes `/control/control_validator/validation_status` and debug markers.
+No services.
+
+#### `operation_mode` ADAPI adaptor — 5 missing services
+
+**Covered:** `/api/operation_mode/state` (topic),
+`/api/operation_mode/change_to_autonomous` (service)
+
+**Missing services:**
+
+| # | Service | Service Type | Notes |
+|---|---------|-------------|-------|
+| 10 | `/api/operation_mode/change_to_stop` | `ChangeOperationMode` | All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` |
+| 11 | `/api/operation_mode/change_to_local` | `ChangeOperationMode` | |
+| 12 | `/api/operation_mode/change_to_remote` | `ChangeOperationMode` | |
+| 13 | `/api/operation_mode/enable_autoware_control` | `ChangeOperationMode` | |
+| 14 | `/api/operation_mode/disable_autoware_control` | `ChangeOperationMode` | |
+
+#### `autoware_state` ADAPI adaptor — fully covered
+
+Sentinel publishes `/autoware/state`. The `shutdown` service is out of scope
+(sentinel lifecycle is managed by the MCU, not Autoware).
+
+#### `mrm_handler` — 1 missing topic
+
+**Covered:** `/system/fail_safe/mrm_state`, `/system/emergency/gear_cmd`,
+`/system/emergency/turn_indicators_cmd`, `/system/emergency/hazard_lights_cmd`
+
+**Missing:**
+
+| # | Topic | Type | Notes |
+|---|-------|------|-------|
+| 15 | `/system/emergency_holding` | `tier4_system_msgs/msg/EmergencyHoldingState` | Consumed by `hazard_status_converter` (also filtered); no remaining consumer |
+
+#### `diagnostic_graph_aggregator` — not required
+
+Both `aggregator_node` and `converter_node` are filtered, along with all their
+consumers (`hazard_status_converter`, `diagnostics` ADAPI). The entire diagnostic
+graph chain is self-contained and fully replaced by the sentinel's own health logic.
+
+Topics `/diagnostics_graph/struct`, `/diagnostics_graph/status`,
+`/system/operation_mode/availability`, `/system/command_mode/availability` have
+no remaining consumers after filtering.
+
+#### `hazard_status_converter` — not required
+
+`/system/emergency/hazard_status` is consumed only by nodes that are also filtered.
+
+#### `diagnostics` ADAPI adaptor — not required
+
+`/api/system/diagnostics/struct` and `/api/system/diagnostics/status` are external
+API endpoints. The sentinel replaces the diagnostic graph; these endpoints would
+return misleading data. Exclude from scope.
+
+#### `interface` ADAPI adaptor — not required
+
+Only serves `/api/interface/version` (returns ADAPI version string). Out of scope.
+
+### Summary
+
+| Category | Count | Items |
+|----------|-------|-------|
+| Missing topics | 5 | #1–3 (gate), #8 (op_mode), #15 (mrm_handler) |
+| Missing services | 9 | #4–7 (gate), #9 (op_mode_transition), #10–14 (op_mode ADAPI) |
+| Not required | 8 topics, 2 services | diagnostic chain, hazard_status, ADAPI diagnostics/interface |
+
+## Work Items
+
+### 12.1 — Missing `vehicle_cmd_gate` topics (3 publishers)
+
+- [ ] 12.1a — Publish `IsPaused` on `/control/vehicle_cmd_gate/is_paused`
+  - Value: `is_paused: false` (sentinel never pauses control output)
+  - **Requires:** `tier4_control_msgs` message generation (check if available)
+
+- [ ] 12.1b — Publish `IsStartRequested` on `/control/vehicle_cmd_gate/is_start_requested`
+  - Value: `is_start_requested: false`
+  - **Requires:** `tier4_control_msgs` message generation
+
+- [ ] 12.1c — Publish `GateMode` on `/control/current_gate_mode`
+  - Value: `data: AUTO` (sentinel always uses autonomous control)
+  - **Note:** Sentinel already publishes `/control/gate_mode_cmd` with `GateMode`.
+    This is a different topic (`current_gate_mode` vs `gate_mode_cmd`).
+  - **Requires:** Check if `tier4_control_msgs/msg/GateMode` is the correct type
+    (vs `autoware_vehicle_cmd_gate_msgs/msg/GateMode`)
+
+### 12.2 — Missing `vehicle_cmd_gate` services (4 services)
+
+- [ ] 12.2a — Serve `/api/autoware/set/engage`
+  - Type: `tier4_external_api_msgs/srv/Engage`
+  - Behavior: Set `autonomous_engaged` flag (same effect as `change_to_autonomous`)
+  - **Requires:** `tier4_external_api_msgs` service generation
+
+- [ ] 12.2b — Serve `/api/autoware/set/emergency`
+  - Type: `tier4_external_api_msgs/srv/SetEmergency`
+  - Behavior: Set/clear external emergency state in sentinel
+  - **Requires:** `tier4_external_api_msgs` service generation
+
+- [ ] 12.2c — Serve `/control/vehicle_cmd_gate/external_emergency_stop`
+  - Type: `std_srvs/srv/Trigger`
+  - Behavior: Trigger external emergency stop
+  - **Requires:** `std_srvs` service generation (may already be available)
+
+- [ ] 12.2d — Serve `/control/vehicle_cmd_gate/clear_external_emergency_stop`
+  - Type: `std_srvs/srv/Trigger`
+  - Behavior: Clear external emergency stop state
+
+### 12.3 — Missing `operation_mode_transition_manager` topic and service
+
+- [ ] 12.3a — Publish `ModeChangeAvailable` on `/control/is_autonomous_available`
+  - Value: `available: true` when sentinel is engaged
+  - **Requires:** `tier4_system_msgs/msg/ModeChangeAvailable` (check if available)
+
+- [ ] 12.3b — Serve `/control/control_mode_request`
+  - Type: `autoware_vehicle_msgs/srv/ControlModeCommand`
+  - Behavior: Stub — always return success (sentinel controls mode internally)
+  - **Requires:** `autoware_vehicle_msgs` service generation
+
+### 12.4 — Missing `operation_mode` ADAPI services (5 services)
+
+All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` (already generated).
+
+- [ ] 12.4a — Serve `/api/operation_mode/change_to_stop`
+  - Behavior: Set `autonomous_engaged = false`, return success
+
+- [ ] 12.4b — Serve `/api/operation_mode/change_to_local`
+  - Behavior: Return error (sentinel doesn't support local mode)
+
+- [ ] 12.4c — Serve `/api/operation_mode/change_to_remote`
+  - Behavior: Return error (sentinel doesn't support remote mode)
+
+- [ ] 12.4d — Serve `/api/operation_mode/enable_autoware_control`
+  - Behavior: No-op, return success (always in autoware control)
+
+- [ ] 12.4e — Serve `/api/operation_mode/disable_autoware_control`
+  - Behavior: Return error (sentinel always controls)
+
+### 12.5 — Missing `mrm_handler` topic
+
+- [ ] 12.5a — Publish `EmergencyHoldingState` on `/system/emergency_holding`
+  - Value: `state: NONE` (sentinel doesn't use emergency holding)
+  - **Requires:** `tier4_system_msgs/msg/EmergencyHoldingState` (check if available)
+
+### 12.6 — Message generation
+
+- [ ] 12.6a — Generate `tier4_control_msgs` (IsPaused, IsStartRequested, GateMode)
+  - Add `<depend>tier4_control_msgs</depend>` to sentinel `package.xml`
+  - Run `just generate` in sentinel_linux
+
+- [ ] 12.6b — Generate `tier4_external_api_msgs` services (Engage, SetEmergency)
+  - Service types needed for 12.2a and 12.2b
+  - Check if already available as transitive dependency
+
+- [ ] 12.6c — Generate `autoware_vehicle_msgs` services (ControlModeCommand)
+  - Service type needed for 12.3b
+
+- [ ] 12.6d — Verify `std_srvs/srv/Trigger` is available
+  - Needed for 12.2c and 12.2d
+
+### 12.7 — Capacity updates
+
+- [ ] 12.7a — Update executor and zpico capacity limits
+  - Current: 32 publishers, 52 callback slots
+  - New publishers: +5 (items 1–3, 8, 15) → 37 publishers
+  - New services: +9 (items 4–7, 9–14) → 10 services
+  - Total callbacks: 37 pub + 10 sub + 1 timer + 10 svc = 58 slots
+  - Update `.env`: `ZPICO_MAX_PUBLISHERS=40`, `NROS_EXECUTOR_MAX_CBS=64`
+  - Update `tests/src/fixtures/sentinel.rs` to match
+  - Update Zephyr Kconfig defaults if needed
+
+### 12.8 — Integration test
+
+- [ ] 12.8a — Extend `test_sentinel_topic_parity` with new topics
+  - Add the 5 new publisher topics to the parity check
+
+- [ ] 12.8b — Service smoke test
+  - Call each new service via `ros2 service call` and verify response
+  - Verify `/api/autoware/set/engage` actually engages the sentinel
+  - Verify `/api/operation_mode/change_to_stop` disengages
+
+## Implementation Notes
+
+### Service count impact
+
+Adding 9 services significantly increases the sentinel's resource usage.
+Each service needs a queryable slot in zenoh-pico and a callback slot in the executor.
+Current capacity (52 CBS, 8 queryables) will need increases.
+
+### `no_std` compatibility
+
+New message types (`IsPaused`, `IsStartRequested`, `EmergencyHoldingState`,
+`ModeChangeAvailable`) must compile under `#![no_std]` for the Zephyr target.
+Service types (`Engage`, `SetEmergency`, `Trigger`, `ControlModeCommand`) are
+only needed in the node binary layer, not the algorithm library.
+
+### Priority
+
+1. **12.1 + 12.5** (5 publishers) — Low effort, completes topic coverage
+2. **12.4** (5 operation_mode services) — Same service type, batch implementation
+3. **12.2** (4 gate services) — Requires new message types
+4. **12.3** (1 topic + 1 service) — Lowest priority, no remaining consumers
+
+## Acceptance Criteria
+
+- [ ] All 5 missing topics published by sentinel with correct data
+- [ ] All 9 missing services respond correctly
+- [ ] `ros2 service list` on modified Autoware + sentinel includes all filtered services
+- [ ] `ros2 service call` succeeds for each new service
+- [ ] No regressions in existing integration tests
+- [ ] Algorithm crates cross-compile cleanly (`just cross-check`)
+- [ ] Capacity limits updated in `.env`, test fixtures, and Zephyr Kconfig
+
+## References
+
+- Phase 8 topic parity: `docs/roadmap/phase-8-topic-parity.md`
+- Autoware ADAPI specs: `/opt/autoware/1.5.0/include/autoware/adapi_specs/`
+- vehicle_cmd_gate source: `~/repos/autoware/1.5.0-ws/src/universe/autoware_universe/control/autoware_vehicle_cmd_gate/`
+- operation_mode_transition_manager: `~/repos/autoware/1.5.0-ws/src/universe/autoware_universe/control/autoware_operation_mode_transition_manager/`
+- ADAPI operation_mode adaptor: `autoware_default_adapi_universe` package, `OperationModeNode`
+- Sentinel Linux binary: `src/autoware_sentinel_linux/src/main.rs`
