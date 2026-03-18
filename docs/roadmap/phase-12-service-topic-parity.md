@@ -207,19 +207,20 @@ All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` (already generated).
 
 ### 12.6 — Message generation
 
-- [ ] 12.6a — Generate `tier4_control_msgs` (IsPaused, IsStartRequested, GateMode)
-  - Add `<depend>tier4_control_msgs</depend>` to sentinel `package.xml`
-  - Run `just generate` in sentinel_linux
+- [x] 12.6a — Generate `tier4_control_msgs` (IsPaused, IsStartRequested, GateMode)
+  - `<depend>tier4_control_msgs</depend>` already in `package.xml`; crate generated
 
-- [ ] 12.6b — Generate `tier4_external_api_msgs` services (Engage, SetEmergency)
-  - Service types needed for 12.2a and 12.2b
-  - Check if already available as transitive dependency
+- [x] 12.6b — Generate `tier4_external_api_msgs` services (Engage, SetEmergency)
+  - Available as transitive dependency; added explicit `<depend>tier4_external_api_msgs</depend>`
+    to `package.xml` since it is a direct code dependency
 
-- [ ] 12.6c — Generate `autoware_vehicle_msgs` services (ControlModeCommand)
-  - Service type needed for 12.3b
+- [x] 12.6c — Generate `autoware_vehicle_msgs` services (ControlModeCommand)
+  - `<depend>autoware_vehicle_msgs</depend>` already in `package.xml`; `srv/control_mode_command.rs`
+    generated
 
-- [ ] 12.6d — Verify `std_srvs/srv/Trigger` is available
-  - Needed for 12.2c and 12.2d
+- [x] 12.6d — Verify `std_srvs/srv/Trigger` is available
+  - `generated/std_srvs/src/srv/trigger.rs` present; added explicit `<depend>std_srvs</depend>`
+    to `package.xml` since it is a direct code dependency
 
 ### 12.7 — Capacity updates
 
