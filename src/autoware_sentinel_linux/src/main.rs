@@ -82,8 +82,9 @@ use tier4_external_api_msgs::msg::Emergency;
 use tier4_external_api_msgs::srv::{
     Engage as EngageSrv, EngageResponse, SetEmergency, SetEmergencyResponse,
 };
-use tier4_system_msgs::msg::{MrmBehaviorStatus, OperationModeAvailability};
+use tier4_system_msgs::msg::{ModeChangeAvailable, MrmBehaviorStatus, OperationModeAvailability};
 use std_srvs::srv::{Trigger, TriggerResponse};
+use autoware_vehicle_msgs::srv::{ControlModeCommand, ControlModeCommandResponse};
 use tier4_vehicle_msgs::msg::VehicleEmergencyStamped;
 
 // Debug/diagnostic message types (Phase 8.2)
@@ -486,6 +487,8 @@ fn run() -> Result<(), NodeError> {
         is_paused_pub,
         is_start_requested_pub,
         current_gate_mode_pub,
+        // Phase 12.3 — Missing operation_mode_transition_manager topic
+        is_autonomous_available_pub,
     ) = {
         let mut node = executor.create_node("sentinel")?;
         (
@@ -558,6 +561,8 @@ fn run() -> Result<(), NodeError> {
                 "/control/vehicle_cmd_gate/is_start_requested",
             )?,
             node.create_publisher::<GateMode>("/control/current_gate_mode")?,
+            // 12.3 — Missing operation_mode_transition_manager topic
+            node.create_publisher::<ModeChangeAvailable>("/control/is_autonomous_available")?,
         )
     };
 
@@ -711,6 +716,17 @@ fn run() -> Result<(), NodeError> {
         },
     )?;
     info!("Service: /control/vehicle_cmd_gate/clear_external_emergency_stop");
+
+    // ====================================================================
+    // Phase 12.3 — operation_mode_transition_manager service
+    // ====================================================================
+
+    // 12.3b — /control/control_mode_request (stub — always success)
+    executor.add_service::<ControlModeCommand, _>(
+        "/control/control_mode_request",
+        |_request| ControlModeCommandResponse { success: true },
+    )?;
+    info!("Service: /control/control_mode_request");
 
     // ====================================================================
     // 30 Hz main control timer
@@ -1101,6 +1117,14 @@ fn run() -> Result<(), NodeError> {
             current_gate_mode_pub
                 .publish(&GateMode {
                     data: GATE_MODE_AUTO, // sentinel always uses autonomous control
+                })
+                .ok();
+
+            // ── Phase 12.3 — Missing operation_mode_transition_manager topic
+            is_autonomous_available_pub
+                .publish(&ModeChangeAvailable {
+                    stamp: Default::default(),
+                    available: island.autonomous_engaged,
                 })
                 .ok();
         });

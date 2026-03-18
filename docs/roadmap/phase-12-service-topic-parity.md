@@ -171,14 +171,14 @@ Only serves `/api/interface/version` (returns ADAPI version string). Out of scop
 
 ### 12.3 — Missing `operation_mode_transition_manager` topic and service
 
-- [ ] 12.3a — Publish `ModeChangeAvailable` on `/control/is_autonomous_available`
-  - Value: `available: true` when sentinel is engaged
-  - **Requires:** `tier4_system_msgs/msg/ModeChangeAvailable` (check if available)
+- [x] 12.3a — Publish `ModeChangeAvailable` on `/control/is_autonomous_available`
+  - Value: `available: true` when `autonomous_engaged`
+  - `tier4_system_msgs/msg/ModeChangeAvailable` already generated
 
-- [ ] 12.3b — Serve `/control/control_mode_request`
+- [x] 12.3b — Serve `/control/control_mode_request`
   - Type: `autoware_vehicle_msgs/srv/ControlModeCommand`
-  - Behavior: Stub — always return success (sentinel controls mode internally)
-  - **Requires:** `autoware_vehicle_msgs` service generation
+  - Behavior: Stub — always returns `success: true`
+  - `autoware_vehicle_msgs` service already generated
 
 ### 12.4 — Missing `operation_mode` ADAPI services (5 services)
 
