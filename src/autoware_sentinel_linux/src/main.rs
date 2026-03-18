@@ -729,6 +729,77 @@ fn run() -> Result<(), NodeError> {
     info!("Service: /control/control_mode_request");
 
     // ====================================================================
+    // Phase 12.4 — operation_mode ADAPI services
+    // ====================================================================
+
+    // 12.4a — change_to_stop: disengage autonomous mode
+    executor.add_service::<ChangeOperationMode, _>(
+        "/api/operation_mode/change_to_stop",
+        |_request| {
+            with_island(|island| {
+                island.autonomous_engaged = false;
+                info!("ChangeOperationMode: → STOP");
+            });
+            ChangeOperationModeResponse {
+                status: autoware_adapi_v1_msgs::msg::ResponseStatus {
+                    success: true,
+                    code: 0,
+                    message: Default::default(),
+                },
+            }
+        },
+    )?;
+
+    // 12.4b — change_to_local: not supported
+    executor.add_service::<ChangeOperationMode, _>(
+        "/api/operation_mode/change_to_local",
+        |_request| ChangeOperationModeResponse {
+            status: autoware_adapi_v1_msgs::msg::ResponseStatus {
+                success: false,
+                code: 1,
+                message: Default::default(),
+            },
+        },
+    )?;
+
+    // 12.4c — change_to_remote: not supported
+    executor.add_service::<ChangeOperationMode, _>(
+        "/api/operation_mode/change_to_remote",
+        |_request| ChangeOperationModeResponse {
+            status: autoware_adapi_v1_msgs::msg::ResponseStatus {
+                success: false,
+                code: 1,
+                message: Default::default(),
+            },
+        },
+    )?;
+
+    // 12.4d — enable_autoware_control: always enabled, no-op
+    executor.add_service::<ChangeOperationMode, _>(
+        "/api/operation_mode/enable_autoware_control",
+        |_request| ChangeOperationModeResponse {
+            status: autoware_adapi_v1_msgs::msg::ResponseStatus {
+                success: true,
+                code: 0,
+                message: Default::default(),
+            },
+        },
+    )?;
+
+    // 12.4e — disable_autoware_control: not supported
+    executor.add_service::<ChangeOperationMode, _>(
+        "/api/operation_mode/disable_autoware_control",
+        |_request| ChangeOperationModeResponse {
+            status: autoware_adapi_v1_msgs::msg::ResponseStatus {
+                success: false,
+                code: 1,
+                message: Default::default(),
+            },
+        },
+    )?;
+    info!("Services: /api/operation_mode/change_to_stop,local,remote,enable,disable");
+
+    // ====================================================================
     // 30 Hz main control timer
     // ====================================================================
     executor.add_timer(TimerDuration::from_millis(33), move || {

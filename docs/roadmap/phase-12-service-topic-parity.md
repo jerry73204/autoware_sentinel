@@ -184,19 +184,19 @@ Only serves `/api/interface/version` (returns ADAPI version string). Out of scop
 
 All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` (already generated).
 
-- [ ] 12.4a — Serve `/api/operation_mode/change_to_stop`
+- [x] 12.4a — Serve `/api/operation_mode/change_to_stop`
   - Behavior: Set `autonomous_engaged = false`, return success
 
-- [ ] 12.4b — Serve `/api/operation_mode/change_to_local`
+- [x] 12.4b — Serve `/api/operation_mode/change_to_local`
   - Behavior: Return error (sentinel doesn't support local mode)
 
-- [ ] 12.4c — Serve `/api/operation_mode/change_to_remote`
+- [x] 12.4c — Serve `/api/operation_mode/change_to_remote`
   - Behavior: Return error (sentinel doesn't support remote mode)
 
-- [ ] 12.4d — Serve `/api/operation_mode/enable_autoware_control`
+- [x] 12.4d — Serve `/api/operation_mode/enable_autoware_control`
   - Behavior: No-op, return success (always in autoware control)
 
-- [ ] 12.4e — Serve `/api/operation_mode/disable_autoware_control`
+- [x] 12.4e — Serve `/api/operation_mode/disable_autoware_control`
   - Behavior: Return error (sentinel always controls)
 
 ### 12.5 — Missing `mrm_handler` topic
