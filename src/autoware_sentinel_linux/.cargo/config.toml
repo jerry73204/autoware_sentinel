@@ -82,6 +82,9 @@ path = "../../../nano-ros/packages/zpico/nros-rmw-zenoh"
 [patch.crates-io.nros-serdes]
 path = "../../../nano-ros/packages/core/nros-serdes"
 
+[patch.crates-io.rcl_interfaces]
+path = "generated/rcl_interfaces"
+
 [patch.crates-io.sensor_msgs]
 path = "generated/sensor_msgs"
 

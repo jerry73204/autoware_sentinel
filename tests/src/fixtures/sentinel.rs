@@ -27,9 +27,11 @@ pub fn build_sentinel() -> TestResult<&'static Path> {
                 .args(["build"])
                 .env("ZPICO_MAX_PUBLISHERS", "40")
                 .env("ZPICO_MAX_SUBSCRIBERS", "16")
+                .env("ZPICO_MAX_QUERYABLES", "20")
                 .env("ZPICO_MAX_LIVELINESS", "64")
                 .env("NROS_MAX_PARAMETERS", "64")
                 .env("NROS_EXECUTOR_MAX_CBS", "64")
+                .env("NROS_PARAM_SERVICE_BUFFER_SIZE", "8192")
                 .current_dir(&crate_dir)
                 .output()
                 .map_err(|e| TestError::BuildFailed(format!("cargo build failed to start: {e}")))?;

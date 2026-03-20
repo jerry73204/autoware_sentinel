@@ -87,6 +87,7 @@ use std_srvs::srv::{Trigger, TriggerResponse};
 use autoware_vehicle_msgs::srv::{ControlModeCommand, ControlModeCommandResponse};
 use tier4_vehicle_msgs::msg::VehicleEmergencyStamped;
 
+
 // Debug/diagnostic message types (Phase 8.2)
 use autoware_control_validator_msgs::msg::ControlValidatorStatus;
 use autoware_internal_debug_msgs::msg::BoolStamped;
@@ -424,17 +425,12 @@ fn run() -> Result<(), NodeError> {
     let config = ExecutorConfig::from_env().node_name("sentinel");
     let mut executor = Executor::open(&config)?;
 
-    // Register ROS 2 parameter services (~/get_parameters, ~/set_parameters, etc.)
-    executor.register_parameter_services("/sentinel")?;
-    info!("Parameter services registered for /sentinel");
-
-    // Declare all algorithm parameters (read-only, Autoware-compatible defaults)
-    let server = executor
-        .params_mut()
-        .expect("parameter services not registered");
-    params::declare_parameters(server);
-    let sentinel_params = params::read_params(server);
-    info!("Declared {} parameters", server.len());
+    // Register the 6 ROS 2 parameter services (list/get/get_types/describe/set/set_atomically).
+    // Must be called before params_mut() — it initialises the executor's ParameterServer.
+    executor.register_parameter_services("sentinel")?;
+    params::declare_parameters(executor.params_mut().unwrap());
+    let sentinel_params = params::read_params(executor.params_mut().unwrap());
+    info!("Declared {} parameters", executor.params().unwrap().len());
 
     // Initialize static state (before any callbacks can fire)
     *ISLAND.0.borrow_mut() = Some(SafetyIsland::new(sentinel_params));

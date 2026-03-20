@@ -152,6 +152,26 @@ The root `just generate-bindings` recipe sources this script automatically.
 2. Source the ROS 2 environment (and ament prefix for Autoware msgs)
 3. Regenerate: `just generate` in the package directory
 
+### ROS 2 type names and the `nros_` prefix
+
+Generated crate names are derived from the ROS 2 package name. For a package `foo_msgs`,
+the generated Rust crate is `foo_msgs` and the DDS type strings are
+`foo_msgs::msg::dds_::Foo_`. This matches what rmw_zenoh_cpp publishes in service/topic
+discovery tokens, so ROS 2 tools can find the services.
+
+**Important:** nano-ros has an internal crate `nros-rcl-interfaces`
+(`~/repos/nano-ros/packages/interfaces/rcl-interfaces/`) whose Rust crate name is
+`nros_rcl_interfaces`. Its service types use
+`nros_rcl_interfaces::srv::dds_::ListParameters_` as the DDS type string, which does **not**
+match the `rcl_interfaces::srv::dds_::ListParameters_` that rmw_zenoh_cpp expects. This
+crate is for nano-ros internal use only (implementing `register_parameter_services`).
+
+If application code needs `rcl_interfaces` service or message types that are visible to
+ROS 2 tools (e.g. calling parameter services on another node), add
+`<depend>rcl_interfaces</depend>` to the package's `package.xml` and regenerate. The
+generated crate at `generated/rcl_interfaces/` will use the correct `rcl_interfaces`
+prefix in all type names.
+
 ### Post-generation fix: `[f64; 36]` Default
 
 Generated `geometry_msgs` has types with `[f64; 36]` covariance arrays that fail to compile
@@ -254,6 +274,17 @@ application code. Always use the `Executor`/`Node` layer.
 - **Generated crate edition**: Message crates use edition 2021; algorithm crates use 2024.
 - **Constants in generated msgs**: Constants defined in `.msg` files are private in generated
   modules — define your own constants in application crates.
+- **`nros-rcl-interfaces` not for ROS 2 interop**: The internal `nros-rcl-interfaces` crate
+  uses `nros_rcl_interfaces::srv::dds_::*` type strings, which rmw_zenoh_cpp cannot discover.
+  To use `rcl_interfaces` services interoperably (e.g. calling parameter services on another
+  node), add `<depend>rcl_interfaces</depend>` to `package.xml` and regenerate locally.
+- **`add_service` reply buffer too small for large responses**: `executor.add_service` uses
+  `DEFAULT_RX_BUF_SIZE = 1024` bytes for the reply buffer. Services that return large responses
+  (e.g., `ListParameters` with 62 params ≈ 2600 bytes, `DescribeParameters` ≈ 4000 bytes)
+  must use `executor.add_service_sized::<Svc, _, REQ_BUF, REPLY_BUF>()` with explicit buffer
+  sizes. Failure mode: the callback fires, serialization silently fails, zenohd times out
+  after 30s, client sees "future timed out" or "failed to initialize wait set" after retry.
+  Sentinel uses 4096 for ListParameters and GetParameters (all-params case), 8192 for DescribeParameters.
 - **LLVM SIGSEGV on cross-compile**: `autoware_adapi_v1_msgs` triggers an LLVM crash in the
   ARM register scavenger (`scavengeFrameVirtualRegs`) when building at `opt-level=0` for
   `thumbv7em-none-eabihf`. Workaround: add `[profile.dev.package.autoware_adapi_v1_msgs]
