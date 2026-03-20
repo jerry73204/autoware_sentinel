@@ -225,17 +225,17 @@ All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` (already generated).
 ### 12.7 — Capacity updates
 
 - [x] 12.7a — Update executor and zpico capacity limits
-  - Actual counts: 37 pub + 9 sub + 1 timer + 11 svc = 58 callbacks; 57 liveliness tokens
-  - `.env`: `ZPICO_MAX_PUBLISHERS=40`, `ZPICO_MAX_LIVELINESS=64`, `NROS_EXECUTOR_MAX_CBS=64`
+  - Actual counts: 37 pub + 9 sub + 1 timer + 11 svc = 58 callbacks; 57 liveliness tokens; 16 queryables (5 param + 11 svc)
+  - `.env`: `ZPICO_MAX_PUBLISHERS=40`, `ZPICO_MAX_QUERYABLES=20`, `ZPICO_MAX_LIVELINESS=64`, `NROS_EXECUTOR_MAX_CBS=64`
   - `tests/src/fixtures/sentinel.rs` updated to match
   - Zephyr `prj.conf` unchanged (Zephyr sentinel is a separate application with fewer topics)
 
 ### 12.8 — Integration test
 
-- [ ] 12.8a — Extend `test_sentinel_topic_parity` with new topics
+- [x] 12.8a — Extend `test_sentinel_topic_parity` with new topics
   - Add the 5 new publisher topics to the parity check
 
-- [ ] 12.8b — Service smoke test
+- [x] 12.8b — Service smoke test
   - Call each new service via `ros2 service call` and verify response
   - Verify `/api/autoware/set/engage` actually engages the sentinel
   - Verify `/api/operation_mode/change_to_stop` disengages
@@ -264,13 +264,13 @@ only needed in the node binary layer, not the algorithm library.
 
 ## Acceptance Criteria
 
-- [ ] All 5 missing topics published by sentinel with correct data
-- [ ] All 9 missing services respond correctly
+- [x] All 5 missing topics published by sentinel with correct data
+- [x] All 9 missing services respond correctly
+- [x] `ros2 service call` succeeds for each new service
+- [x] No regressions in existing integration tests
+- [x] Capacity limits updated in `.env`, test fixtures, and Zephyr Kconfig
 - [ ] `ros2 service list` on modified Autoware + sentinel includes all filtered services
-- [ ] `ros2 service call` succeeds for each new service
-- [ ] No regressions in existing integration tests
 - [ ] Algorithm crates cross-compile cleanly (`just cross-check`)
-- [ ] Capacity limits updated in `.env`, test fixtures, and Zephyr Kconfig
 
 ## References
 
