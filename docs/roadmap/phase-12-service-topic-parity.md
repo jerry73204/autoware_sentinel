@@ -1,6 +1,6 @@
 # Phase 12: Service & Topic Parity
 
-**Status:** Not started
+**Status:** Complete
 **Depends on:** Phase 8 (topic parity), Phase 7 (integration testing)
 **Goal:** The sentinel must publish every topic and serve every service that the
 filtered-out Autoware nodes provide, even if no remaining node currently consumes them.
@@ -240,6 +240,28 @@ All use `autoware_adapi_v1_msgs/srv/ChangeOperationMode` (already generated).
   - Verify `/api/autoware/set/engage` actually engages the sentinel
   - Verify `/api/operation_mode/change_to_stop` disengages
 
+### 12.9 — ROS 2 parameter services
+
+- [x] 12.9a — Serve all 6 parameter services (`list/get/get_types/describe/set/set_atomically`)
+  - Used `executor.register_parameter_services("sentinel")` — the standard nano-ros API
+  - 62 parameters declared via `params::declare_parameters(executor.params_mut().unwrap())`
+  - Tests `test_sentinel_param_list` and `test_sentinel_param_get` pass
+
+- [x] 12.9b — Fix `nros_rcl_interfaces` DDS type strings
+  - Root cause: codegen `apply_package_renames` replaced `rcl_interfaces::` with
+    `nros_rcl_interfaces::` inside string literals, corrupting `TYPE_NAME`/`SERVICE_NAME`
+  - Fix 1: corrected all 34 generated files (humble + iron) — `nros_rcl_interfaces::` →
+    `rcl_interfaces::` in every `TYPE_NAME`/`SERVICE_NAME` constant
+  - Fix 2: `fix_rust_idents_recursive` now uses `replace_outside_strings` which skips
+    content inside double-quoted string literals; future regeneration is safe
+  - Fix 3: `nros_rcl_interfaces` types are now `pub(crate)` in `parameter_services.rs`;
+    external code uses `executor.register_parameter_services()` only
+
+- [x] 12.9c — Buffer sizing
+  - `NROS_PARAM_SERVICE_BUFFER_SIZE=8192` in `.env` and `tests/src/fixtures/sentinel.rs`
+  - Required because `describe_parameters` with 62 params produces ≈ 4.5 KiB CDR reply
+    (exceeds the 4 KiB default)
+
 ## Implementation Notes
 
 ### Service count impact
@@ -269,8 +291,15 @@ only needed in the node binary layer, not the algorithm library.
 - [x] `ros2 service call` succeeds for each new service
 - [x] No regressions in existing integration tests
 - [x] Capacity limits updated in `.env`, test fixtures, and Zephyr Kconfig
-- [ ] `ros2 service list` on modified Autoware + sentinel includes all filtered services
-- [ ] Algorithm crates cross-compile cleanly (`just cross-check`)
+- [x] 6 parameter services respond correctly (`ros2 param list/get /sentinel`)
+- [x] `ros2 service list` on sentinel includes all filtered services
+  - Verified: all 10 Phase 12 services present in `ros2 service list` output (17 services total,
+    including 6 parameter services on `/sentinel`)
+  - Note: sentinel must be started without inheriting `ZENOH_SESSION_CONFIG_URI` /
+    `ZENOH_ROUTER_CONFIG_URI` — those env vars confuse zenoh-pico's liveliness token setup
+    and prevent service discovery. The `just launch-autoware-sentinel` recipe handles this correctly.
+- [x] Algorithm crates cross-compile cleanly (`just cross-check`)
+  - All algorithm libs build for `thumbv7em-none-eabihf` without errors
 
 ## References
 

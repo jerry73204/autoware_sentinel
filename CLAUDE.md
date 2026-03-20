@@ -120,6 +120,7 @@ vars explicitly.
 | `ZPICO_MAX_LIVELINESS` | 8 | 64 | Max liveliness tokens |
 | `NROS_MAX_PARAMETERS` | 32 | 64 | Max ROS 2 parameters |
 | `NROS_EXECUTOR_MAX_CBS` | 4 | 64 | Max executor callback slots |
+| `NROS_PARAM_SERVICE_BUFFER_SIZE` | 4096 | 8192 | CDR buffer for each param service (req + reply). 8192 needed because `describe_parameters` with 62 params produces ≈ 4.5 KiB replies. |
 
 The test fixture (`tests/src/fixtures/sentinel.rs`) sets these same values when building
 the sentinel binary during integration tests. Keep them in sync.
@@ -161,16 +162,10 @@ discovery tokens, so ROS 2 tools can find the services.
 
 **Important:** nano-ros has an internal crate `nros-rcl-interfaces`
 (`~/repos/nano-ros/packages/interfaces/rcl-interfaces/`) whose Rust crate name is
-`nros_rcl_interfaces`. Its service types use
-`nros_rcl_interfaces::srv::dds_::ListParameters_` as the DDS type string, which does **not**
-match the `rcl_interfaces::srv::dds_::ListParameters_` that rmw_zenoh_cpp expects. This
-crate is for nano-ros internal use only (implementing `register_parameter_services`).
-
-If application code needs `rcl_interfaces` service or message types that are visible to
-ROS 2 tools (e.g. calling parameter services on another node), add
-`<depend>rcl_interfaces</depend>` to the package's `package.xml` and regenerate. The
-generated crate at `generated/rcl_interfaces/` will use the correct `rcl_interfaces`
-prefix in all type names.
+`nros_rcl_interfaces`. Its `TYPE_NAME`/`SERVICE_NAME` constants now correctly use the
+`rcl_interfaces::srv::dds_::*` prefix (matching what rmw_zenoh_cpp expects), so
+`executor.register_parameter_services("node_name")` works for ROS 2 interop without any
+local code generation. The types are `pub(crate)` — not exposed in the public nros API.
 
 ### Post-generation fix: `[f64; 36]` Default
 
@@ -274,17 +269,14 @@ application code. Always use the `Executor`/`Node` layer.
 - **Generated crate edition**: Message crates use edition 2021; algorithm crates use 2024.
 - **Constants in generated msgs**: Constants defined in `.msg` files are private in generated
   modules — define your own constants in application crates.
-- **`nros-rcl-interfaces` not for ROS 2 interop**: The internal `nros-rcl-interfaces` crate
-  uses `nros_rcl_interfaces::srv::dds_::*` type strings, which rmw_zenoh_cpp cannot discover.
-  To use `rcl_interfaces` services interoperably (e.g. calling parameter services on another
-  node), add `<depend>rcl_interfaces</depend>` to `package.xml` and regenerate locally.
 - **`add_service` reply buffer too small for large responses**: `executor.add_service` uses
   `DEFAULT_RX_BUF_SIZE = 1024` bytes for the reply buffer. Services that return large responses
-  (e.g., `ListParameters` with 62 params ≈ 2600 bytes, `DescribeParameters` ≈ 4000 bytes)
-  must use `executor.add_service_sized::<Svc, _, REQ_BUF, REPLY_BUF>()` with explicit buffer
-  sizes. Failure mode: the callback fires, serialization silently fails, zenohd times out
-  after 30s, client sees "future timed out" or "failed to initialize wait set" after retry.
-  Sentinel uses 4096 for ListParameters and GetParameters (all-params case), 8192 for DescribeParameters.
+  must use `executor.add_service_sized::<Svc, _, REQ_BUF, REPLY_BUF>()` with explicit sizes.
+  Failure mode: callback fires, serialization silently fails, zenohd times out after 30s, client
+  sees "future timed out". For parameter services specifically, use
+  `executor.register_parameter_services()` which applies `NROS_PARAM_SERVICE_BUFFER_SIZE`
+  (default 4096, sentinel sets 8192 via `.env` to handle `describe_parameters` with 62 params
+  ≈ 4.5 KiB response).
 - **LLVM SIGSEGV on cross-compile**: `autoware_adapi_v1_msgs` triggers an LLVM crash in the
   ARM register scavenger (`scavengeFrameVirtualRegs`) when building at `opt-level=0` for
   `thumbv7em-none-eabihf`. Workaround: add `[profile.dev.package.autoware_adapi_v1_msgs]
@@ -345,6 +337,7 @@ linear.x.abs() < self.vx_threshold
 | 6 | Zephyr Application (single binary) | In progress |
 | 7 | Integration Testing (Autoware planning simulator) | In progress (7.1–7.3 complete) |
 | 8 | Topic Parity (match baseline Autoware topics) | Complete |
+| 12 | Service & Topic Parity (services + parameter API) | In progress — see below |
 
 See `docs/roadmap/` for detailed phase docs. Roadmap docs use `- [ ]` / `- [x]` checkboxes
 on subphase headers and acceptance criteria to track completion progress.
@@ -435,3 +428,33 @@ The nano-ros repo is at `~/repos/nano-ros/`. Key references:
 - `packages/core/nros-serdes/` — CDR serialization
 - `examples/native/rust/zenoh/` — reference examples for node patterns
 - `docs/guides/message-generation.md` — codegen guide
+
+## Phase 12: Service & Topic Parity
+
+Full roadmap: `docs/roadmap/phase-12-service-topic-parity.md`
+
+### Completed (12.1 – 12.8 + 12.9 parameter services)
+
+- **12.1** — 3 new publishers: `is_paused`, `is_start_requested`, `current_gate_mode`
+- **12.2** — 4 new services: `engage`, `emergency`, `external_emergency_stop`, `clear_external_emergency_stop`
+- **12.3** — 1 new publisher (`is_autonomous_available`), 1 new service (`control_mode_request`)
+- **12.4** — 5 ADAPI operation mode services: `change_to_stop/local/remote`, `enable/disable_autoware_control`
+- **12.5** — 1 new publisher: `emergency_holding`
+- **12.6 – 12.8** — message generation, capacity updates, integration tests (all 14 transport smoke tests pass)
+- **12.9** — 6 ROS 2 parameter services (`list/get/get_types/describe/set/set_atomically`) via
+  `executor.register_parameter_services("sentinel")`. Fixed `nros_rcl_interfaces` DDS type strings
+  to use `rcl_interfaces::` prefix (was `nros_rcl_interfaces::` — invisible to rmw_zenoh_cpp).
+  `nros_rcl_interfaces` types are now `pub(crate)`; users call the high-level API only.
+  `NROS_PARAM_SERVICE_BUFFER_SIZE=8192` set in `.env` and test fixture.
+
+### Status: Complete
+
+All acceptance criteria verified:
+- `ros2 service list` shows all 10 Phase 12 services (17 total including 6 parameter services)
+- `just cross-check` passes — all algorithm crates cross-compile to `thumbv7em-none-eabihf`
+
+**Important:** The sentinel must NOT inherit `ZENOH_SESSION_CONFIG_URI` or `ZENOH_ROUTER_CONFIG_URI`
+from the shell. Those env vars interfere with zenoh-pico's liveliness token setup and prevent
+service/node discovery by rmw_zenoh_cpp. The `just launch-autoware-sentinel` recipe handles this
+correctly (it starts the sentinel as a subprocess without those vars). When testing manually, unset
+them first: `env ZENOH_SESSION_CONFIG_URI= ZENOH_ROUTER_CONFIG_URI= sentinel`
