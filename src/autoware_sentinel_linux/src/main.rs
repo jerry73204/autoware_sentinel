@@ -427,7 +427,7 @@ fn run() -> Result<(), NodeError> {
 
     // Register the 6 ROS 2 parameter services (list/get/get_types/describe/set/set_atomically).
     // Must be called before params_mut() — it initialises the executor's ParameterServer.
-    executor.register_parameter_services("sentinel")?;
+    executor.register_parameter_services()?;
     params::declare_parameters(executor.params_mut().unwrap());
     let sentinel_params = params::read_params(executor.params_mut().unwrap());
     info!("Declared {} parameters", executor.params().unwrap().len());

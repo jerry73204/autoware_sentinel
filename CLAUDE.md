@@ -164,8 +164,10 @@ discovery tokens, so ROS 2 tools can find the services.
 (`~/repos/nano-ros/packages/interfaces/rcl-interfaces/`) whose Rust crate name is
 `nros_rcl_interfaces`. Its `TYPE_NAME`/`SERVICE_NAME` constants now correctly use the
 `rcl_interfaces::srv::dds_::*` prefix (matching what rmw_zenoh_cpp expects), so
-`executor.register_parameter_services("node_name")` works for ROS 2 interop without any
-local code generation. The types are `pub(crate)` — not exposed in the public nros API.
+`executor.register_parameter_services()` works for ROS 2 interop without any
+local code generation. The API derives the node FQN from the executor's namespace + node_name
+(e.g. node_name `"sentinel"` → services at `/sentinel/list_parameters`).
+The types are `pub(crate)` — not exposed in the public nros API.
 
 ### Post-generation fix: `[f64; 36]` Default
 
@@ -442,10 +444,12 @@ Full roadmap: `docs/roadmap/phase-12-service-topic-parity.md`
 - **12.5** — 1 new publisher: `emergency_holding`
 - **12.6 – 12.8** — message generation, capacity updates, integration tests (all 14 transport smoke tests pass)
 - **12.9** — 6 ROS 2 parameter services (`list/get/get_types/describe/set/set_atomically`) via
-  `executor.register_parameter_services("sentinel")`. Fixed `nros_rcl_interfaces` DDS type strings
-  to use `rcl_interfaces::` prefix (was `nros_rcl_interfaces::` — invisible to rmw_zenoh_cpp).
-  `nros_rcl_interfaces` types are now `pub(crate)`; users call the high-level API only.
-  `NROS_PARAM_SERVICE_BUFFER_SIZE=8192` set in `.env` and test fixture.
+  `executor.register_parameter_services()`. The API derives the node FQN from the executor's
+  namespace + node_name (following the ROS 2 convention: `/{ns}/{node}/list_parameters`).
+  Fixed `nros_rcl_interfaces` DDS type strings to use `rcl_interfaces::` prefix (was
+  `nros_rcl_interfaces::` — invisible to rmw_zenoh_cpp). `nros_rcl_interfaces` types are now
+  `pub(crate)`; users call the high-level API only. `NROS_PARAM_SERVICE_BUFFER_SIZE=8192`
+  set in `.env` and test fixture.
 
 ### Status: Complete
 
