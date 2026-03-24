@@ -75,18 +75,19 @@ use autoware_vehicle_msgs::msg::{
     Engage, GearCommand, GearReport, HazardLightsCommand, SteeringReport, TurnIndicatorsCommand,
     VelocityReport,
 };
+use autoware_vehicle_msgs::srv::{ControlModeCommand, ControlModeCommandResponse};
 use geometry_msgs::msg::{Accel, AccelWithCovarianceStamped, Twist};
 use nav_msgs::msg::Odometry;
+use std_srvs::srv::{Trigger, TriggerResponse};
 use tier4_control_msgs::msg::{GateMode, IsPaused, IsStartRequested, IsStopped};
 use tier4_external_api_msgs::msg::Emergency;
 use tier4_external_api_msgs::srv::{
     Engage as EngageSrv, EngageResponse, SetEmergency, SetEmergencyResponse,
 };
-use tier4_system_msgs::msg::{EmergencyHoldingState, ModeChangeAvailable, MrmBehaviorStatus, OperationModeAvailability};
-use std_srvs::srv::{Trigger, TriggerResponse};
-use autoware_vehicle_msgs::srv::{ControlModeCommand, ControlModeCommandResponse};
+use tier4_system_msgs::msg::{
+    EmergencyHoldingState, ModeChangeAvailable, MrmBehaviorStatus, OperationModeAvailability,
+};
 use tier4_vehicle_msgs::msg::VehicleEmergencyStamped;
-
 
 // Debug/diagnostic message types (Phase 8.2)
 use autoware_control_validator_msgs::msg::ControlValidatorStatus;
@@ -516,9 +517,7 @@ fn run() -> Result<(), NodeError> {
                 "/control/vehicle_cmd_gate/operation_mode",
             )?,
             // /system/operation_mode/state (consumed by behavior_path_planner)
-            node.create_publisher::<OperationModeState>(
-                "/system/operation_mode/state",
-            )?,
+            node.create_publisher::<OperationModeState>("/system/operation_mode/state")?,
             // 8.1d — Engagement
             node.create_publisher::<Engage>("/api/autoware/get/engage")?,
             node.create_publisher::<Engage>("/autoware/engage")?,
@@ -651,7 +650,11 @@ fn run() -> Result<(), NodeError> {
             island.autonomous_engaged = request.engage;
             info!(
                 "set/engage: {}",
-                if request.engage { "ENGAGED" } else { "DISENGAGED" }
+                if request.engage {
+                    "ENGAGED"
+                } else {
+                    "DISENGAGED"
+                }
             );
         });
         EngageResponse {
@@ -722,10 +725,9 @@ fn run() -> Result<(), NodeError> {
     // ====================================================================
 
     // 12.3b — /control/control_mode_request (stub — always success)
-    executor.add_service::<ControlModeCommand, _>(
-        "/control/control_mode_request",
-        |_request| ControlModeCommandResponse { success: true },
-    )?;
+    executor.add_service::<ControlModeCommand, _>("/control/control_mode_request", |_request| {
+        ControlModeCommandResponse { success: true }
+    })?;
     info!("Service: /control/control_mode_request");
 
     // ====================================================================
@@ -827,8 +829,7 @@ fn run() -> Result<(), NodeError> {
                     // Stale: gentle braking at current speed.
                     // Use current_velocity as target so the validator doesn't
                     // flag over-velocity (target ≈ actual → no mismatch).
-                    island.auto_control.longitudinal.velocity =
-                        island.current_velocity as f32;
+                    island.auto_control.longitudinal.velocity = island.current_velocity as f32;
                     island.auto_control.longitudinal.acceleration = -1.5;
                 }
                 // Pass the actual reception time, not the current timer tick.
@@ -885,8 +886,7 @@ fn run() -> Result<(), NodeError> {
             // ── Command output ─────────────────────────────────────────
 
             island.cmd_gate.set_system_emergency(
-                island.mrm_handler.state() == MRM_STATE_OPERATING
-                    || island.external_emergency_stop,
+                island.mrm_handler.state() == MRM_STATE_OPERATING || island.external_emergency_stop,
             );
             island
                 .cmd_gate
@@ -1013,8 +1013,8 @@ fn run() -> Result<(), NodeError> {
                 .ok();
 
             // 8.1c — Vehicle command gate additional
-            let is_emergency = island.mrm_handler.state() == MRM_STATE_OPERATING
-                || island.external_emergency_stop;
+            let is_emergency =
+                island.mrm_handler.state() == MRM_STATE_OPERATING || island.external_emergency_stop;
             emergency_cmd_pub
                 .publish(&VehicleEmergencyStamped {
                     stamp: Default::default(),
