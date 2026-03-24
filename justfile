@@ -31,8 +31,7 @@ generate-bindings:
 
 # Build all packages (generates bindings first) + Zephyr + Linux sentinel
 build: generate-bindings build-zephyr build-sentinel-linux build-rmw-zenoh
-    parallel --tag --line-buffer --halt now,fail=1 \
-      'cd src/{} && cargo build --tests' ::: {{ packages }}
+    cargo build --workspace --tests
 
 # Build Zephyr application (native_sim)
 build-zephyr:
@@ -52,8 +51,7 @@ run-sentinel-linux:
 
 # Test all packages (unit tests)
 test:
-    parallel --tag --line-buffer --halt now,fail=1 \
-      'cd src/{} && cargo test' ::: {{ packages }}
+    cargo test --workspace
 
 # Run integration tests with nextest
 test-integration:
@@ -161,24 +159,22 @@ launch-autoware-sentinel $record="false" $drive="false" $timeout="120" $poses="s
 
 # Format all packages
 format:
-    parallel --tag --line-buffer 'cd src/{} && cargo fmt' ::: {{ packages }}
+    cargo fmt --all
 
 # Check formatting on all packages
 format-check:
-    parallel --tag --line-buffer --halt now,fail=1 \
-      'cd src/{} && cargo fmt -- --check' ::: {{ packages }}
+    cargo fmt --all -- --check
 
-# Cross-compile check all packages
+# Cross-compile check all algorithm crates (excludes sentinel_linux which requires std)
 cross-check:
-    parallel --tag --line-buffer --halt now,fail=1 \
-      'cd src/{} && cargo check --target thumbv7em-none-eabihf' ::: {{ packages }}
+    cargo check --workspace --exclude autoware_sentinel_linux --target thumbv7em-none-eabihf
 
 # CI: format-check, cross-check, and test
 ci: format-check cross-check test
 
 # Clean all packages
 clean:
-    parallel --tag --line-buffer 'cd src/{} && just clean' ::: {{ packages }}
+    cargo clean
 
 # Run Kani verification on all harness crates
 verify-kani:

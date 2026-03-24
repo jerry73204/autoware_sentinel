@@ -9,7 +9,7 @@ __pycache__/
 *.py[oc]
 
 # Created by Cargo
-/targeto/
+/target/
 
 # Created by colcon
 /build/
