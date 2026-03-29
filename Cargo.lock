@@ -555,7 +555,7 @@ dependencies = [
 [[package]]
 name = "dust_dds"
 version = "0.15.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "critical-section",
  "dust_dds_derive",
@@ -569,7 +569,7 @@ dependencies = [
 [[package]]
 name = "dust_dds_derive"
 version = "0.15.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -832,7 +832,7 @@ dependencies = [
 [[package]]
 name = "nros"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "nros-core",
  "nros-macros",
@@ -847,7 +847,7 @@ dependencies = [
 [[package]]
 name = "nros-builtin-interfaces"
 version = "1.2.2"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "heapless",
  "nros-core",
@@ -857,7 +857,7 @@ dependencies = [
 [[package]]
 name = "nros-core"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "heapless",
  "log",
@@ -867,7 +867,7 @@ dependencies = [
 [[package]]
 name = "nros-macros"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -877,7 +877,7 @@ dependencies = [
 [[package]]
 name = "nros-node"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "heapless",
  "log",
@@ -894,7 +894,7 @@ dependencies = [
 [[package]]
 name = "nros-params"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "heapless",
 ]
@@ -902,7 +902,7 @@ dependencies = [
 [[package]]
 name = "nros-rcl-interfaces"
 version = "1.2.2"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "heapless",
  "nros-builtin-interfaces",
@@ -913,7 +913,7 @@ dependencies = [
 [[package]]
 name = "nros-rmw"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "heapless",
  "log",
@@ -923,7 +923,7 @@ dependencies = [
 [[package]]
 name = "nros-rmw-dds"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "dust_dds",
  "heapless",
@@ -934,7 +934,7 @@ dependencies = [
 [[package]]
 name = "nros-rmw-xrce"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "atomic-waker",
  "heapless",
@@ -945,7 +945,7 @@ dependencies = [
 [[package]]
 name = "nros-rmw-zenoh"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "atomic-waker",
  "heapless",
@@ -959,7 +959,7 @@ dependencies = [
 [[package]]
 name = "nros-serdes"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "heapless",
 ]
@@ -1673,7 +1673,7 @@ checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 [[package]]
 name = "xrce-sys"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "cc",
 ]
@@ -1687,7 +1687,7 @@ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 [[package]]
 name = "zpico-sys"
 version = "0.1.0"
-source = "git+https://github.com/jerry73204/nano-ros.git?rev=9e1a029#9e1a02983a2db2dc5d6a1eba1318cbe402319a9a"
+source = "git+https://github.com/jerry73204/nano-ros.git?rev=17397f2a#17397f2a4ac0d5981bf1a704c95300565773c01d"
 dependencies = [
  "cbindgen",
  "cc",

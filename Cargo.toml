@@ -33,16 +33,11 @@ members = [
 #   tests                  — nextest integration tests, standalone
 
 [patch.crates-io]
-# nano-ros packages
-nros = { git = "https://github.com/jerry73204/nano-ros.git", rev = "970620a8" }
-nros-core = { git = "https://github.com/jerry73204/nano-ros.git", rev = "970620a8" }
-nros-macros = { git = "https://github.com/jerry73204/nano-ros.git", rev = "970620a8" }
-nros-node = { git = "https://github.com/jerry73204/nano-ros.git", rev = "970620a8" }
-nros-params = { git = "https://github.com/jerry73204/nano-ros.git", rev = "970620a8" }
-nros-rmw = { git = "https://github.com/jerry73204/nano-ros.git", rev = "970620a8" }
-nros-rmw-zenoh = { git = "https://github.com/jerry73204/nano-ros.git", rev = "970620a8" }
-nros-serdes = { git = "https://github.com/jerry73204/nano-ros.git", rev = "970620a8" }
-zpico-sys = { git = "https://github.com/jerry73204/nano-ros.git", rev = "970620a8" }
+# nano-ros — all internal crates (nros-core, nros-node, zpico-sys, etc.) are resolved
+# automatically from the same git repo via cargo workspace dependency resolution.
+nros = { git = "https://github.com/jerry73204/nano-ros.git", rev = "17397f2a" }
+nros-core = { git = "https://github.com/jerry73204/nano-ros.git", rev = "17397f2a" }
+nros-serdes = { git = "https://github.com/jerry73204/nano-ros.git", rev = "17397f2a" }
 
 # Generated message packages (from sentinel_linux — the superset of all packages)
 autoware_adapi_v1_msgs = { path = "src/autoware_sentinel_linux/generated/autoware_adapi_v1_msgs" }
