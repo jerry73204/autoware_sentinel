@@ -2,8 +2,6 @@
 
 set dotenv-load
 
-packages := "autoware_stop_filter autoware_vehicle_velocity_converter autoware_shift_decider autoware_mrm_emergency_stop_operator autoware_mrm_comfortable_stop_operator autoware_heartbeat_watchdog autoware_mrm_handler autoware_vehicle_cmd_gate autoware_twist2accel autoware_control_validator autoware_operation_mode_transition_manager autoware_interpolation autoware_universe_utils autoware_vehicle_info_utils autoware_motion_utils autoware_pid_longitudinal_controller autoware_mpc_lateral_controller autoware_trajectory_follower_base autoware_trajectory_follower_node"
-
 kani_packages := "autoware_stop_filter autoware_vehicle_velocity_converter autoware_shift_decider autoware_mrm_emergency_stop_operator"
 
 workspace_dir := "../autoware-sentinel-workspace"
@@ -11,10 +9,15 @@ env_script := workspace_dir / "env.sh"
 zenohd := "external/zenoh/target/fast/zenohd"
 session_config := ".config/zenoh_session.json5"
 router_config := ".config/zenoh_router.json5"
+rmw_zenoh_ws := "external/rmw_zenoh_ws"
 
 # Default recipe - show available commands
 default:
     @just --list
+
+# ════════════════════════════════════════════════════════════════════
+# Build
+# ════════════════════════════════════════════════════════════════════
 
 # Generate message bindings (sentinel_linux is the superset; workspace patches share its generated/)
 generate-bindings:
@@ -26,9 +29,13 @@ generate-bindings:
     echo "=== autoware_sentinel (Zephyr) ==="
     (cd "src/autoware_sentinel" && cargo nano-ros generate-rust --force)
 
-# Build all packages (generates bindings first) + Zephyr + Linux sentinel
+# Build all packages + Zephyr + Linux sentinel
 build: generate-bindings build-zephyr build-sentinel-linux build-rmw-zenoh
     cargo build --workspace --tests
+
+# Build Linux sentinel binary
+build-sentinel-linux:
+    cargo build -p autoware_sentinel_linux
 
 # Build Zephyr application (native_sim)
 build-zephyr:
@@ -38,13 +45,63 @@ build-zephyr:
     cd {{ workspace_dir }}
     west build -b native_sim/native/64 autoware-sentinel/src/autoware_sentinel -d build/sentinel
 
-# Build Linux sentinel binary
-build-sentinel-linux:
-    cargo build -p autoware_sentinel_linux
+# Build rmw_zenoh_cpp from source
+build-rmw-zenoh:
+    scripts/build_rmw_zenoh.sh
 
-# Run Linux sentinel binary
-run-sentinel-linux:
-    cargo run -p autoware_sentinel_linux
+# Rebuild zenohd from source
+build-zenohd:
+    cd external/zenoh && cargo build --profile fast -p zenohd
+
+# ════════════════════════════════════════════════════════════════════
+# Run
+# ════════════════════════════════════════════════════════════════════
+
+# Run zenohd router on localhost:7447
+run-zenohd:
+    {{ zenohd }} --config {{ router_config }}
+
+# Run the Linux sentinel binary (unsets SESSION/ROUTER_CONFIG_URI to avoid breaking liveliness)
+run-sentinel: build-sentinel-linux
+    env ZENOH_SESSION_CONFIG_URI= ZENOH_ROUTER_CONFIG_URI= cargo run -p autoware_sentinel_linux
+
+# Run Zephyr sentinel (native_sim) — requires TAP network + separate zenohd
+run-sentinel-zephyr: build-zephyr
+    #!/usr/bin/env bash
+    set -eo pipefail
+    ZEPHYR_BIN="{{ workspace_dir }}/build/sentinel/zephyr/zephyr.exe"
+    if [ ! -f "$ZEPHYR_BIN" ]; then
+        echo "Error: Zephyr binary not found. Run: just build-zephyr"
+        exit 1
+    fi
+    echo "NOTE: TAP network must be set up first: just setup-tap-network"
+    echo "NOTE: zenohd must listen on 0.0.0.0:7447 (bridge IP)"
+    "$ZEPHYR_BIN"
+
+# Run full baseline Autoware via play_launch (zenohd must be running separately)
+run-autoware: dump-autoware
+    play_launch replay --input-file tmp/launch/autoware_record.json --web-addr 0.0.0.0:8080
+
+# Run filtered Autoware via play_launch (zenohd + sentinel must be running separately)
+run-autoware-filtered: filter-autoware
+    play_launch replay --input-file tmp/launch/autoware_record_filtered.json --web-addr 0.0.0.0:8080
+
+# Run the autonomous drive controller (init pose → route → engage → wait for arrival)
+run-auto-drive timeout="120" poses="scripts/poses.yaml":
+    python3 scripts/auto_drive.py --timeout {{ timeout }} --poses {{ poses }}
+
+# Restart ros2 daemon with rmw_zenoh_cpp (picks up RMW settings from .envrc)
+ros2-daemon-restart:
+    #!/usr/bin/env bash
+    set -eo pipefail
+    ros2 daemon stop 2>/dev/null || true
+    sleep 2
+    ros2 daemon start
+    echo "ros2 daemon started (RMW_IMPLEMENTATION=$RMW_IMPLEMENTATION)"
+
+# ════════════════════════════════════════════════════════════════════
+# Test
+# ════════════════════════════════════════════════════════════════════
 
 # Test all packages (unit tests)
 test:
@@ -66,6 +123,14 @@ test-planning:
 test-auto-drive:
     cd tests && cargo nextest run -E 'binary(auto_drive_comparison)'
 
+# Run Zephyr native_sim integration tests
+test-zephyr:
+    cd tests && cargo nextest run -E 'binary(zephyr_native_sim)'
+
+# ════════════════════════════════════════════════════════════════════
+# Autoware planning simulator
+# ════════════════════════════════════════════════════════════════════
+
 # Dump Autoware planning simulator launch to record.json
 dump-autoware map_path="/opt/autoware/1.5.0/share/autoware_test_utils/test_map":
     #!/usr/bin/env bash
@@ -79,7 +144,7 @@ dump-autoware map_path="/opt/autoware/1.5.0/share/autoware_test_utils/test_map":
         map_path:={{ map_path }}
     echo "Record written to tmp/launch/autoware_record.json"
 
-# Filter play_launch record to remove 7 sentinel-replaced nodes
+# Filter play_launch record to remove sentinel-replaced nodes
 filter-autoware: dump-autoware
     scripts/filter_autoware_record.sh tmp/launch/autoware_record.json tmp/launch/autoware_record_filtered.json
 
@@ -111,18 +176,7 @@ launch-autoware-baseline $record="false" $drive="false" $timeout="120" $poses="s
     echo "=== Baseline Autoware ==="
     parallel --line-buffer --halt now,done=1 --delay 2 ::: "${JOBS[@]}"
 
-# Launch sentinel binary with zenohd (no Autoware)
-launch-sentinel: build-sentinel-linux
-    #!/usr/bin/env bash
-    set -eo pipefail
-    SENTINEL="$(pwd)/target/debug/autoware_sentinel_linux"
-
-    echo "=== Sentinel + zenohd ($ZENOH_LOCATOR) ==="
-    parallel --line-buffer --halt now,done=1 --delay 2 ::: \
-      '{{ zenohd }} --config {{ router_config }} < /dev/null' \
-      "$SENTINEL"
-
-# Launch filtered Autoware + sentinel (7 nodes replaced by sentinel binary)
+# Launch filtered Autoware + sentinel (14 nodes replaced by sentinel binary)
 [arg("record", long="record", value="true")]
 [arg("drive", long="drive", value="true")]
 [arg("timeout", long="timeout")]
@@ -154,6 +208,10 @@ launch-autoware-sentinel $record="false" $drive="false" $timeout="120" $poses="s
     echo "=== Autoware + Sentinel ==="
     parallel --line-buffer --halt now,done=1 --delay 2 ::: "${JOBS[@]}"
 
+# ════════════════════════════════════════════════════════════════════
+# Quality & verification
+# ════════════════════════════════════════════════════════════════════
+
 # Format all packages
 format:
     cargo fmt --all
@@ -169,10 +227,6 @@ cross-check:
 # CI: format-check, cross-check, and test
 ci: format-check cross-check test
 
-# Clean all packages
-clean:
-    cargo clean
-
 # Run Kani verification on all harness crates
 verify-kani:
     parallel --tag --line-buffer --halt now,fail=1 \
@@ -182,20 +236,16 @@ verify-kani:
 verify-verus:
     cd src/verification && ~/.verus/verus-main/source/target-verus/release/verus src/lib.rs
 
-# Build rmw_zenoh_cpp from source
-build-rmw-zenoh:
-    scripts/build_rmw_zenoh.sh
-
-# Rebuild zenohd from source
-build-zenohd:
-    cd external/zenoh && cargo build --profile fast -p zenohd
-
-# Run zenohd router (needed for rmw_zenoh_cpp)
-run-zenohd:
-    {{ zenohd }} --config {{ router_config }}
-
 # Run all verification
 verify: verify-kani verify-verus
+
+# ════════════════════════════════════════════════════════════════════
+# Utilities
+# ════════════════════════════════════════════════════════════════════
+
+# Clean workspace build artifacts
+clean:
+    cargo clean
 
 # Setup TAP network for Zephyr native_sim (requires sudo)
 setup-tap-network:
@@ -204,23 +254,6 @@ setup-tap-network:
 # Tear down TAP network (requires sudo)
 teardown-tap-network:
     sudo scripts/zephyr/setup-network.sh --down
-
-# Run Zephyr sentinel (native_sim) with zenohd on bridge network
-run-sentinel-zephyr: build-zephyr
-    #!/usr/bin/env bash
-    set -eo pipefail
-    ZEPHYR_BIN="{{ workspace_dir }}/build/sentinel/zephyr/zephyr.exe"
-    if [ ! -f "$ZEPHYR_BIN" ]; then
-        echo "Error: Zephyr binary not found at $ZEPHYR_BIN"
-        echo "Run: just build-zephyr"
-        exit 1
-    fi
-
-    echo "=== Zephyr Sentinel + zenohd (bridge: 192.0.2.2:7447) ==="
-    echo "NOTE: TAP network must be set up first: just setup-tap-network"
-    parallel --line-buffer --halt now,done=1 --delay 2 ::: \
-      '{{ zenohd }} --listen tcp/0.0.0.0:7447' \
-      "$ZEPHYR_BIN"
 
 # Capture initial + goal poses from RViz and save to a file
 capture-poses output="scripts/poses.yaml":
@@ -237,7 +270,3 @@ auto-drive timeout="120" poses="scripts/poses.yaml":
     source /opt/ros/humble/setup.bash
     source /opt/autoware/1.5.0/local_setup.bash 2>/dev/null || true
     python3 scripts/auto_drive.py --timeout {{ timeout }} --poses {{ poses }}
-
-# Run Zephyr native_sim integration tests (Phase 7.4)
-test-zephyr:
-    cd tests && cargo nextest run -E 'binary(zephyr_native_sim)'
