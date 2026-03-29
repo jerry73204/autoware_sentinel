@@ -301,6 +301,105 @@ only needed in the node binary layer, not the algorithm library.
 - [x] Algorithm crates cross-compile cleanly (`just cross-check`)
   - All algorithm libs build for `thumbv7em-none-eabihf` without errors
 
+## Live Comparison: Baseline vs Sentinel (2026-03-25)
+
+Autoware 1.5.0 planning simulator launched via `play_launch replay` through a shared
+zenohd router. Discovery via `ros2 daemon` + `ros2 topic/service list` with rmw_zenoh_cpp.
+
+### Summary
+
+| Metric | Baseline | Sentinel | Delta |
+|--------|----------|----------|-------|
+| Topics | 571 | 558 | -13 |
+| Services | 742 | 653 | -89 |
+| Extra (sentinel-only) | — | 1 topic, 6 services | — |
+
+The sentinel adds 1 topic (`/control/is_autonomous_available`) and 6 parameter services
+(`/sentinel/{list,get,set,describe,get_types,set_atomically}_parameters`) not present in
+the baseline.
+
+### Phase 12 functional services: all present ✓
+
+All 11 sentinel-provided services are present in the sentinel stack:
+- `/api/autoware/set/engage`
+- `/api/autoware/set/emergency`
+- `/control/vehicle_cmd_gate/external_emergency_stop`
+- `/control/vehicle_cmd_gate/clear_external_emergency_stop`
+- `/control/control_mode_request`
+- `/api/operation_mode/change_to_{stop,local,remote,autonomous}`
+- `/api/operation_mode/{enable,disable}_autoware_control`
+
+### Missing topics (14)
+
+All from filtered-out system/diagnostic nodes. No consumer in the planning simulator
+depends on these — they are monitoring/status topics.
+
+| Topic | Source node |
+|-------|------------|
+| `/api/system/diagnostics/status` | ADAPI diagnostics adaptor |
+| `/api/system/diagnostics/struct` | ADAPI diagnostics adaptor |
+| `/diagnostics_graph/unknowns` | diagnostic_graph_aggregator |
+| `/system/command_mode/availability` | ADAPI operation_mode adaptor |
+| `/system/component_state_monitor/component/launch/{control,localization,map,perception,planning,sensing,system,vehicle}` | component_state_monitor (8 topics) |
+| `/system/emergency/hazard_status` | hazard_status_converter |
+| `/system/operation_mode/availability` | ADAPI operation_mode adaptor |
+
+### Missing services (95)
+
+#### Parameter services of filtered-out nodes (84)
+
+Each filtered ROS 2 node provides 6 parameter services. The sentinel replaces their
+**functional** behavior but not their per-node parameter services. These are ROS 2
+infrastructure services rarely called by external clients.
+
+| Node | Services | Count |
+|------|----------|-------|
+| ADAPI `autoware_state` adaptor | `/adapi/node/autoware_state/{6 param srvs}` | 6 |
+| ADAPI `diagnostics` adaptor | `/adapi/node/diagnostics/{6 param srvs}` | 6 |
+| ADAPI `interface` adaptor | `/adapi/node/interface/{6 param srvs}` | 6 |
+| ADAPI `operation_mode` adaptor | `/adapi/node/operation_mode/{6 param srvs}` | 6 |
+| `autoware_operation_mode_transition_manager` | `/control/autoware_operation_mode_transition_manager/{6 param srvs}` | 6 |
+| `autoware_shift_decider` | `/control/autoware_shift_decider/{6 param srvs}` | 6 |
+| `autoware_control_validator` | `/control/control_validator/{6 param srvs}` | 6 |
+| `autoware_vehicle_cmd_gate` | `/control/vehicle_cmd_gate/{6 param srvs + config_logger + set_stop}` | 8 |
+| `mrm_comfortable_stop_operator` | `/system/mrm_comfortable_stop_operator/.../{6 param srvs}` | 6 |
+| `mrm_emergency_stop_operator` | `/system/mrm_emergency_stop_operator/.../{6 param srvs}` | 6 |
+| `mrm_handler` | `/system/mrm_handler/{6 param srvs}` | 6 |
+| `aggregator` (diagnostic_graph) | `/system/aggregator/{6 param srvs}` | 6 |
+| `converter` (diagnostic_graph) | `/system/converter/{6 param srvs}` | 6 |
+| `hazard_status_converter` | `/system/hazard_status_converter/{6 param srvs}` | 6 |
+| **Total** | | **84** |
+
+#### Functional services of filtered-out nodes (11)
+
+| Service | Source node | Purpose |
+|---------|------------|---------|
+| `/api/interface/version` | ADAPI `interface` adaptor | Returns ADAPI version string |
+| `/api/system/diagnostics/reset` | ADAPI `diagnostics` adaptor | Reset diagnostic state |
+| `/autoware/shutdown` | ADAPI `interface` adaptor | Graceful shutdown |
+| `/control/vehicle_cmd_gate/config_logger` | `vehicle_cmd_gate` | Runtime log level control |
+| `/control/vehicle_cmd_gate/set_stop` | `vehicle_cmd_gate` | Force stop from external |
+| `/diagnostics_graph/reset` | `diagnostic_graph_aggregator` | Reset diagnostic graph |
+| `/system/aggregator/set_initializing` | `diagnostic_graph_aggregator` | Set initializing state |
+| `/system/mrm/comfortable_stop/operate` | `mrm_comfortable_stop_operator` | Trigger comfortable stop |
+| `/system/mrm/emergency_stop/operate` | `mrm_emergency_stop_operator` | Trigger emergency stop |
+| `/system/mrm/pull_over_manager/operate` | `mrm_handler` | Trigger pull-over MRM |
+| `/system/operation_mode/change_autoware_control` | ADAPI `operation_mode` adaptor | Legacy control mode toggle |
+
+### Assessment
+
+The sentinel covers all services needed for the autonomous driving pipeline. Missing items
+fall into two categories:
+
+1. **Per-node parameter services** (84/95) — ROS 2 infrastructure. The sentinel consolidates
+   all parameters under a single `/sentinel/*` parameter namespace. Individual per-node
+   parameter services are not needed since the sentinel is a single process.
+
+2. **System monitoring services** (11/95) and **monitoring topics** (14/14) — From diagnostic
+   aggregator, hazard_status_converter, and component_state_monitor. These implement Autoware's
+   health monitoring stack, which the safety island intentionally replaces with its own
+   heartbeat-based approach.
+
 ## References
 
 - Phase 8 topic parity: `docs/roadmap/phase-8-topic-parity.md`

@@ -454,8 +454,13 @@ Full roadmap: `docs/roadmap/phase-12-service-topic-parity.md`
 ### Status: Complete
 
 All acceptance criteria verified:
-- `ros2 service list` shows all 10 Phase 12 services (17 total including 6 parameter services)
+- `ros2 service list` shows all 11 Phase 12 functional services + 6 parameter services
 - `just cross-check` passes — all algorithm crates cross-compile to `thumbv7em-none-eabihf`
+- Live comparison (baseline 571 topics / 742 services vs sentinel 558 / 653):
+  - 14 missing topics — system monitoring (diagnostics, component_state_monitor, hazard_status)
+  - 95 missing services — 84 per-node parameter services + 11 system monitoring services
+  - All missing items are from filtered-out diagnostic/monitoring nodes, not the driving pipeline
+  - Full analysis in `docs/roadmap/phase-12-service-topic-parity.md`
 
 **Important:** The sentinel must NOT inherit `ZENOH_SESSION_CONFIG_URI` or `ZENOH_ROUTER_CONFIG_URI`
 from the shell. Those env vars interfere with zenoh-pico's liveliness token setup and prevent
