@@ -20,19 +20,19 @@ static SENTINEL_BINARY: OnceCell<PathBuf> = OnceCell::new();
 pub fn build_sentinel() -> TestResult<&'static Path> {
     SENTINEL_BINARY
         .get_or_try_init(|| {
-            let crate_dir = project_root().join("src/autoware_sentinel_linux");
-            eprintln!("Building sentinel binary in {:?}...", crate_dir);
+            let root = project_root();
+            eprintln!("Building sentinel binary in {:?}...", root);
 
             let output = Command::new("cargo")
-                .args(["build"])
-                .env("ZPICO_MAX_PUBLISHERS", "40")
+                .args(["build", "-p", "autoware_sentinel_linux"])
+                .env("ZPICO_MAX_PUBLISHERS", "56")
                 .env("ZPICO_MAX_SUBSCRIBERS", "16")
-                .env("ZPICO_MAX_QUERYABLES", "20")
-                .env("ZPICO_MAX_LIVELINESS", "64")
+                .env("ZPICO_MAX_QUERYABLES", "32")
+                .env("ZPICO_MAX_LIVELINESS", "96")
                 .env("NROS_MAX_PARAMETERS", "64")
-                .env("NROS_EXECUTOR_MAX_CBS", "64")
+                .env("NROS_EXECUTOR_MAX_CBS", "96")
                 .env("NROS_PARAM_SERVICE_BUFFER_SIZE", "8192")
-                .current_dir(&crate_dir)
+                .current_dir(&root)
                 .output()
                 .map_err(|e| TestError::BuildFailed(format!("cargo build failed to start: {e}")))?;
 
@@ -44,7 +44,7 @@ pub fn build_sentinel() -> TestResult<&'static Path> {
                 )));
             }
 
-            let binary = crate_dir.join("target/debug/autoware_sentinel_linux");
+            let binary = root.join("target/debug/autoware_sentinel_linux");
             if !binary.exists() {
                 return Err(TestError::BuildFailed(
                     "Binary not found after build".into(),

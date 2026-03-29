@@ -16,18 +16,15 @@ router_config := ".config/zenoh_router.json5"
 default:
     @just --list
 
-# Generate bindings for all packages
+# Generate message bindings (sentinel_linux is the superset; workspace patches share its generated/)
 generate-bindings:
     #!/usr/bin/env bash
     set -eo pipefail
     source scripts/activate_autoware.sh
-    parallel --tag --line-buffer --halt now,fail=1 \
-      'cd src/{} && cargo nano-ros generate-rust --config --nano-ros-path ../../../nano-ros/packages/core --force' \
-      ::: {{ packages }}
-    echo "=== autoware_sentinel ==="
-    (cd "src/autoware_sentinel" && cargo nano-ros generate-rust --force)
     echo "=== autoware_sentinel_linux ==="
-    (cd "src/autoware_sentinel_linux" && cargo nano-ros generate-rust --config --nano-ros-path ../../../nano-ros/packages/core --force)
+    (cd "src/autoware_sentinel_linux" && cargo nano-ros generate-rust --force)
+    echo "=== autoware_sentinel (Zephyr) ==="
+    (cd "src/autoware_sentinel" && cargo nano-ros generate-rust --force)
 
 # Build all packages (generates bindings first) + Zephyr + Linux sentinel
 build: generate-bindings build-zephyr build-sentinel-linux build-rmw-zenoh
@@ -43,11 +40,11 @@ build-zephyr:
 
 # Build Linux sentinel binary
 build-sentinel-linux:
-    cd src/autoware_sentinel_linux && cargo build
+    cargo build -p autoware_sentinel_linux
 
 # Run Linux sentinel binary
 run-sentinel-linux:
-    cd src/autoware_sentinel_linux && cargo run
+    cargo run -p autoware_sentinel_linux
 
 # Test all packages (unit tests)
 test:
@@ -118,7 +115,7 @@ launch-autoware-baseline $record="false" $drive="false" $timeout="120" $poses="s
 launch-sentinel: build-sentinel-linux
     #!/usr/bin/env bash
     set -eo pipefail
-    SENTINEL="$(pwd)/src/autoware_sentinel_linux/target/debug/autoware_sentinel_linux"
+    SENTINEL="$(pwd)/target/debug/autoware_sentinel_linux"
 
     echo "=== Sentinel + zenohd ($ZENOH_LOCATOR) ==="
     parallel --line-buffer --halt now,done=1 --delay 2 ::: \
@@ -138,7 +135,7 @@ launch-autoware-sentinel $record="false" $drive="false" $timeout="120" $poses="s
     export ZENOH_SESSION_CONFIG_URI="$(pwd)/{{ session_config }}"
 
     FILTERED=tmp/launch/autoware_record_filtered.json
-    SENTINEL="$(pwd)/src/autoware_sentinel_linux/target/debug/autoware_sentinel_linux"
+    SENTINEL="$(pwd)/target/debug/autoware_sentinel_linux"
 
     JOBS=(
         '{{ zenohd }} --config {{ router_config }} < /dev/null'

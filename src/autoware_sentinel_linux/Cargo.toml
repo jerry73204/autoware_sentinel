@@ -41,8 +41,9 @@ autoware_mpc_lateral_controller = { path = "../autoware_mpc_lateral_controller" 
 autoware_pid_longitudinal_controller = { path = "../autoware_pid_longitudinal_controller" }
 autoware_vehicle_info_utils = { path = "../autoware_vehicle_info_utils" }
 
-# Message crates (resolved via [patch.crates-io] in .cargo/config.toml)
+# Message crates (resolved via [patch.crates-io] in root Cargo.toml)
 autoware_adapi_v1_msgs = { version = "*", default-features = false }
+autoware_adapi_version_msgs = { version = "*", default-features = false }
 autoware_control_msgs = { version = "*", default-features = false }
 autoware_planning_msgs = { version = "*", default-features = false }
 autoware_system_msgs = { version = "*", default-features = false }
@@ -54,6 +55,9 @@ tier4_external_api_msgs = { version = "*", default-features = false }
 tier4_system_msgs = { version = "*", default-features = false }
 tier4_vehicle_msgs = { version = "*", default-features = false }
 std_srvs = { version = "*", default-features = false }
+logging_demo = { version = "*", default-features = false }
+builtin_interfaces = { version = "*", default-features = false }
+diagnostic_msgs = { version = "*", default-features = false }
 visualization_msgs = { version = "*", default-features = false }
 
 # Debug message crates (Phase 8.2)

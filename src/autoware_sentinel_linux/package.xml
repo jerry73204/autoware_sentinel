@@ -21,6 +21,10 @@
   <depend>tier4_vehicle_msgs</depend>
   <depend>visualization_msgs</depend>
 
+  <!-- Missing parity packages (Phase 12 gap closure) -->
+  <depend>autoware_adapi_version_msgs</depend>
+  <depend>logging_demo</depend>
+
   <!-- Debug/diagnostic message packages (Phase 8.2) -->
   <depend>autoware_control_validator</depend>
   <depend>autoware_internal_debug_msgs</depend>

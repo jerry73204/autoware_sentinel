@@ -97,6 +97,21 @@ use autoware_operation_mode_transition_manager_msgs::msg::OperationModeTransitio
 use autoware_vehicle_cmd_gate_msgs::msg::IsFilterActivated;
 use visualization_msgs::msg::MarkerArray;
 
+// Phase 12 gap closure — missing topic/service types
+use autoware_adapi_v1_msgs::msg::{DiagGraphStatus, DiagGraphStruct};
+use autoware_adapi_v1_msgs::srv::{ResetDiagGraph, ResetDiagGraphResponse};
+use autoware_adapi_version_msgs::srv::{InterfaceVersion, InterfaceVersionResponse};
+use autoware_system_msgs::msg::HazardStatusStamped;
+use autoware_system_msgs::srv::ChangeAutowareControl;
+use diagnostic_msgs::msg::DiagnosticArray;
+use logging_demo::srv::ConfigLogger;
+use std_srvs::srv::SetBool;
+use tier4_control_msgs::srv::SetStop;
+use tier4_system_msgs::msg::CommandModeAvailability;
+use tier4_system_msgs::srv::{
+    OperateMrm, ResetDiagGraph as ResetDiagGraphTier4,
+};
+
 /// MRM handler state: OPERATING (emergency response active).
 const MRM_STATE_OPERATING: u16 = 2;
 
@@ -416,10 +431,21 @@ fn main() {
 
     info!("Autoware Sentinel — Linux Native Safety Island");
 
-    if let Err(e) = run() {
-        log::error!("Fatal: {:?}", e);
-        std::process::exit(1);
-    }
+    // Run on a thread with 16 MB stack to handle the large executor arena + publishers
+    // in debug builds. The main thread's default 8 MB stack is insufficient when 51
+    // publishers, 22 services, and the executor arena (~222 KB) are all on the stack.
+    // Debug builds have much larger stack frames (no inlining). The executor arena
+    // (~222 KB), 51-publisher tuple, and timer closure need a large stack.
+    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024);
+    let handle = builder
+        .spawn(|| {
+            if let Err(e) = run() {
+                log::error!("Fatal: {:?}", e);
+                std::process::exit(1);
+            }
+        })
+        .expect("Failed to spawn main thread");
+    handle.join().expect("Main thread panicked");
 }
 
 fn run() -> Result<(), NodeError> {
@@ -488,6 +514,21 @@ fn run() -> Result<(), NodeError> {
         is_autonomous_available_pub,
         // Phase 12.5 — Missing mrm_handler topic
         emergency_holding_pub,
+        // Phase 12 gap closure — 14 missing monitoring topics
+        diag_status_pub,
+        diag_struct_pub,
+        diag_unknowns_pub,
+        cmd_mode_availability_pub,
+        csm_control_pub,
+        csm_localization_pub,
+        csm_map_pub,
+        csm_perception_pub,
+        csm_planning_pub,
+        csm_sensing_pub,
+        csm_system_pub,
+        csm_vehicle_pub,
+        hazard_status_pub,
+        op_mode_availability_pub,
     ) = {
         let mut node = executor.create_node("sentinel")?;
         (
@@ -562,6 +603,39 @@ fn run() -> Result<(), NodeError> {
             node.create_publisher::<ModeChangeAvailable>("/control/is_autonomous_available")?,
             // 12.5 — Missing mrm_handler topic
             node.create_publisher::<EmergencyHoldingState>("/system/emergency_holding")?,
+            // Phase 12 gap closure — 14 missing monitoring topics
+            node.create_publisher::<DiagGraphStatus>("/api/system/diagnostics/status")?,
+            node.create_publisher::<DiagGraphStruct>("/api/system/diagnostics/struct")?,
+            node.create_publisher::<DiagnosticArray>("/diagnostics_graph/unknowns")?,
+            node.create_publisher::<CommandModeAvailability>("/system/command_mode/availability")?,
+            node.create_publisher::<ModeChangeAvailable>(
+                "/system/component_state_monitor/component/launch/control",
+            )?,
+            node.create_publisher::<ModeChangeAvailable>(
+                "/system/component_state_monitor/component/launch/localization",
+            )?,
+            node.create_publisher::<ModeChangeAvailable>(
+                "/system/component_state_monitor/component/launch/map",
+            )?,
+            node.create_publisher::<ModeChangeAvailable>(
+                "/system/component_state_monitor/component/launch/perception",
+            )?,
+            node.create_publisher::<ModeChangeAvailable>(
+                "/system/component_state_monitor/component/launch/planning",
+            )?,
+            node.create_publisher::<ModeChangeAvailable>(
+                "/system/component_state_monitor/component/launch/sensing",
+            )?,
+            node.create_publisher::<ModeChangeAvailable>(
+                "/system/component_state_monitor/component/launch/system",
+            )?,
+            node.create_publisher::<ModeChangeAvailable>(
+                "/system/component_state_monitor/component/launch/vehicle",
+            )?,
+            node.create_publisher::<HazardStatusStamped>("/system/emergency/hazard_status")?,
+            node.create_publisher::<OperationModeAvailability>(
+                "/system/operation_mode/availability",
+            )?,
         )
     };
 
@@ -802,8 +876,116 @@ fn run() -> Result<(), NodeError> {
     info!("Services: /api/operation_mode/change_to_stop,local,remote,enable,disable");
 
     // ====================================================================
+    // Phase 12 gap closure — 11 missing functional services
+    // ====================================================================
+
+    // /api/interface/version — returns ADAPI version
+    executor.add_service::<InterfaceVersion, _>("/api/interface/version", |_request| {
+        InterfaceVersionResponse {
+            major: 1,
+            minor: 5,
+            patch: 0,
+        }
+    })?;
+
+    // /api/system/diagnostics/reset — no-op (sentinel has no diagnostic graph)
+    executor.add_service::<ResetDiagGraph, _>("/api/system/diagnostics/reset", |_request| {
+        ResetDiagGraphResponse {
+            status: autoware_adapi_v1_msgs::msg::ResponseStatus {
+                success: true,
+                code: 0,
+                message: Default::default(),
+            },
+        }
+    })?;
+
+    // /autoware/shutdown — no-op (sentinel doesn't shut down on request)
+    executor.add_service::<Trigger, _>("/autoware/shutdown", |_request| TriggerResponse {
+        success: true,
+        message: Default::default(),
+    })?;
+
+    // /control/vehicle_cmd_gate/config_logger — no-op stub
+    executor.add_service::<ConfigLogger, _>(
+        "/control/vehicle_cmd_gate/config_logger",
+        |_request| logging_demo::srv::ConfigLoggerResponse { success: true },
+    )?;
+
+    // /control/vehicle_cmd_gate/set_stop — no-op (sentinel manages stops internally)
+    executor.add_service::<SetStop, _>("/control/vehicle_cmd_gate/set_stop", |_request| {
+        tier4_control_msgs::srv::SetStopResponse {
+            status: Default::default(),
+        }
+    })?;
+
+    // /diagnostics_graph/reset — no-op
+    executor.add_service::<ResetDiagGraphTier4, _>(
+        "/diagnostics_graph/reset",
+        |_request| tier4_system_msgs::srv::ResetDiagGraphResponse {
+            status: Default::default(),
+        },
+    )?;
+
+    // /system/aggregator/set_initializing — no-op
+    executor.add_service::<SetBool, _>("/system/aggregator/set_initializing", |_request| {
+        std_srvs::srv::SetBoolResponse {
+            success: true,
+            message: Default::default(),
+        }
+    })?;
+
+    // /system/mrm/comfortable_stop/operate — sentinel manages MRM internally
+    executor.add_service::<OperateMrm, _>(
+        "/system/mrm/comfortable_stop/operate",
+        |_request| tier4_system_msgs::srv::OperateMrmResponse {
+            response: Default::default(),
+        },
+    )?;
+
+    // /system/mrm/emergency_stop/operate
+    executor.add_service::<OperateMrm, _>(
+        "/system/mrm/emergency_stop/operate",
+        |_request| tier4_system_msgs::srv::OperateMrmResponse {
+            response: Default::default(),
+        },
+    )?;
+
+    // /system/mrm/pull_over_manager/operate
+    executor.add_service::<OperateMrm, _>(
+        "/system/mrm/pull_over_manager/operate",
+        |_request| tier4_system_msgs::srv::OperateMrmResponse {
+            response: Default::default(),
+        },
+    )?;
+
+    // /system/operation_mode/change_autoware_control — legacy toggle
+    executor.add_service::<ChangeAutowareControl, _>(
+        "/system/operation_mode/change_autoware_control",
+        |_request| autoware_system_msgs::srv::ChangeAutowareControlResponse {
+            status: Default::default(),
+        },
+    )?;
+    info!("Services: Phase 12 gap closure (11 functional services)");
+
+    // ====================================================================
     // 30 Hz main control timer
     // ====================================================================
+    // Large diagnostic messages are pre-allocated as static to avoid stack overflow
+    // (DiagGraphStatus is ~2 MB due to heapless::Vec<DiagLeafStatus, 64>).
+    static DIAG_STATUS_DEFAULT: DiagGraphStatus = DiagGraphStatus {
+        stamp: builtin_interfaces::msg::Time { sec: 0, nanosec: 0 },
+        id: nros::heapless::String::new(),
+        nodes: nros::heapless::Vec::new(),
+        diags: nros::heapless::Vec::new(),
+    };
+    static DIAG_STRUCT_DEFAULT: DiagGraphStruct = DiagGraphStruct {
+        stamp: builtin_interfaces::msg::Time { sec: 0, nanosec: 0 },
+        id: nros::heapless::String::new(),
+        nodes: nros::heapless::Vec::new(),
+        diags: nros::heapless::Vec::new(),
+        links: nros::heapless::Vec::new(),
+    };
+
     executor.add_timer(TimerDuration::from_millis(33), move || {
         with_island(|island| {
             let now = now_ms();
@@ -1205,6 +1387,34 @@ fn run() -> Result<(), NodeError> {
                     stamp: Default::default(),
                     is_holding: false, // sentinel doesn't use emergency holding
                 })
+                .ok();
+
+            // ── Phase 12 gap closure — monitoring topics ──────────────────
+            // These are published at 30 Hz with static/default values since
+            // the sentinel doesn't implement a diagnostic graph.
+            diag_status_pub.publish(&DIAG_STATUS_DEFAULT).ok();
+            diag_struct_pub.publish(&DIAG_STRUCT_DEFAULT).ok();
+            diag_unknowns_pub.publish(&DiagnosticArray::default()).ok();
+            cmd_mode_availability_pub
+                .publish(&CommandModeAvailability::default())
+                .ok();
+            let csm_available = ModeChangeAvailable {
+                stamp: Default::default(),
+                available: true,
+            };
+            csm_control_pub.publish(&csm_available).ok();
+            csm_localization_pub.publish(&csm_available).ok();
+            csm_map_pub.publish(&csm_available).ok();
+            csm_perception_pub.publish(&csm_available).ok();
+            csm_planning_pub.publish(&csm_available).ok();
+            csm_sensing_pub.publish(&csm_available).ok();
+            csm_system_pub.publish(&csm_available).ok();
+            csm_vehicle_pub.publish(&csm_available).ok();
+            hazard_status_pub
+                .publish(&HazardStatusStamped::default())
+                .ok();
+            op_mode_availability_pub
+                .publish(&OperationModeAvailability::default())
                 .ok();
         });
     })?;

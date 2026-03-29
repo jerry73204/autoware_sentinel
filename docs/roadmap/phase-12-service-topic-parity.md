@@ -334,15 +334,15 @@ All 11 sentinel-provided services are present in the sentinel stack:
 All from filtered-out system/diagnostic nodes. No consumer in the planning simulator
 depends on these — they are monitoring/status topics.
 
-| Topic | Source node |
-|-------|------------|
-| `/api/system/diagnostics/status` | ADAPI diagnostics adaptor |
-| `/api/system/diagnostics/struct` | ADAPI diagnostics adaptor |
-| `/diagnostics_graph/unknowns` | diagnostic_graph_aggregator |
-| `/system/command_mode/availability` | ADAPI operation_mode adaptor |
+| Topic                                                                                                                    | Source node                        |
+|--------------------------------------------------------------------------------------------------------------------------|------------------------------------|
+| `/api/system/diagnostics/status`                                                                                         | ADAPI diagnostics adaptor          |
+| `/api/system/diagnostics/struct`                                                                                         | ADAPI diagnostics adaptor          |
+| `/diagnostics_graph/unknowns`                                                                                            | diagnostic_graph_aggregator        |
+| `/system/command_mode/availability`                                                                                      | ADAPI operation_mode adaptor       |
 | `/system/component_state_monitor/component/launch/{control,localization,map,perception,planning,sensing,system,vehicle}` | component_state_monitor (8 topics) |
-| `/system/emergency/hazard_status` | hazard_status_converter |
-| `/system/operation_mode/availability` | ADAPI operation_mode adaptor |
+| `/system/emergency/hazard_status`                                                                                        | hazard_status_converter            |
+| `/system/operation_mode/availability`                                                                                    | ADAPI operation_mode adaptor       |
 
 ### Missing services (95)
 
@@ -352,39 +352,39 @@ Each filtered ROS 2 node provides 6 parameter services. The sentinel replaces th
 **functional** behavior but not their per-node parameter services. These are ROS 2
 infrastructure services rarely called by external clients.
 
-| Node | Services | Count |
-|------|----------|-------|
-| ADAPI `autoware_state` adaptor | `/adapi/node/autoware_state/{6 param srvs}` | 6 |
-| ADAPI `diagnostics` adaptor | `/adapi/node/diagnostics/{6 param srvs}` | 6 |
-| ADAPI `interface` adaptor | `/adapi/node/interface/{6 param srvs}` | 6 |
-| ADAPI `operation_mode` adaptor | `/adapi/node/operation_mode/{6 param srvs}` | 6 |
-| `autoware_operation_mode_transition_manager` | `/control/autoware_operation_mode_transition_manager/{6 param srvs}` | 6 |
-| `autoware_shift_decider` | `/control/autoware_shift_decider/{6 param srvs}` | 6 |
-| `autoware_control_validator` | `/control/control_validator/{6 param srvs}` | 6 |
-| `autoware_vehicle_cmd_gate` | `/control/vehicle_cmd_gate/{6 param srvs + config_logger + set_stop}` | 8 |
-| `mrm_comfortable_stop_operator` | `/system/mrm_comfortable_stop_operator/.../{6 param srvs}` | 6 |
-| `mrm_emergency_stop_operator` | `/system/mrm_emergency_stop_operator/.../{6 param srvs}` | 6 |
-| `mrm_handler` | `/system/mrm_handler/{6 param srvs}` | 6 |
-| `aggregator` (diagnostic_graph) | `/system/aggregator/{6 param srvs}` | 6 |
-| `converter` (diagnostic_graph) | `/system/converter/{6 param srvs}` | 6 |
-| `hazard_status_converter` | `/system/hazard_status_converter/{6 param srvs}` | 6 |
-| **Total** | | **84** |
+| Node                                         | Services                                                              | Count  |
+|----------------------------------------------|-----------------------------------------------------------------------|--------|
+| ADAPI `autoware_state` adaptor               | `/adapi/node/autoware_state/{6 param srvs}`                           | 6      |
+| ADAPI `diagnostics` adaptor                  | `/adapi/node/diagnostics/{6 param srvs}`                              | 6      |
+| ADAPI `interface` adaptor                    | `/adapi/node/interface/{6 param srvs}`                                | 6      |
+| ADAPI `operation_mode` adaptor               | `/adapi/node/operation_mode/{6 param srvs}`                           | 6      |
+| `autoware_operation_mode_transition_manager` | `/control/autoware_operation_mode_transition_manager/{6 param srvs}`  | 6      |
+| `autoware_shift_decider`                     | `/control/autoware_shift_decider/{6 param srvs}`                      | 6      |
+| `autoware_control_validator`                 | `/control/control_validator/{6 param srvs}`                           | 6      |
+| `autoware_vehicle_cmd_gate`                  | `/control/vehicle_cmd_gate/{6 param srvs + config_logger + set_stop}` | 8      |
+| `mrm_comfortable_stop_operator`              | `/system/mrm_comfortable_stop_operator/.../{6 param srvs}`            | 6      |
+| `mrm_emergency_stop_operator`                | `/system/mrm_emergency_stop_operator/.../{6 param srvs}`              | 6      |
+| `mrm_handler`                                | `/system/mrm_handler/{6 param srvs}`                                  | 6      |
+| `aggregator` (diagnostic_graph)              | `/system/aggregator/{6 param srvs}`                                   | 6      |
+| `converter` (diagnostic_graph)               | `/system/converter/{6 param srvs}`                                    | 6      |
+| `hazard_status_converter`                    | `/system/hazard_status_converter/{6 param srvs}`                      | 6      |
+| **Total**                                    |                                                                       | **84** |
 
 #### Functional services of filtered-out nodes (11)
 
-| Service | Source node | Purpose |
-|---------|------------|---------|
-| `/api/interface/version` | ADAPI `interface` adaptor | Returns ADAPI version string |
-| `/api/system/diagnostics/reset` | ADAPI `diagnostics` adaptor | Reset diagnostic state |
-| `/autoware/shutdown` | ADAPI `interface` adaptor | Graceful shutdown |
-| `/control/vehicle_cmd_gate/config_logger` | `vehicle_cmd_gate` | Runtime log level control |
-| `/control/vehicle_cmd_gate/set_stop` | `vehicle_cmd_gate` | Force stop from external |
-| `/diagnostics_graph/reset` | `diagnostic_graph_aggregator` | Reset diagnostic graph |
-| `/system/aggregator/set_initializing` | `diagnostic_graph_aggregator` | Set initializing state |
-| `/system/mrm/comfortable_stop/operate` | `mrm_comfortable_stop_operator` | Trigger comfortable stop |
-| `/system/mrm/emergency_stop/operate` | `mrm_emergency_stop_operator` | Trigger emergency stop |
-| `/system/mrm/pull_over_manager/operate` | `mrm_handler` | Trigger pull-over MRM |
-| `/system/operation_mode/change_autoware_control` | ADAPI `operation_mode` adaptor | Legacy control mode toggle |
+| Service                                          | Source node                     | Purpose                      |
+|--------------------------------------------------|---------------------------------|------------------------------|
+| `/api/interface/version`                         | ADAPI `interface` adaptor       | Returns ADAPI version string |
+| `/api/system/diagnostics/reset`                  | ADAPI `diagnostics` adaptor     | Reset diagnostic state       |
+| `/autoware/shutdown`                             | ADAPI `interface` adaptor       | Graceful shutdown            |
+| `/control/vehicle_cmd_gate/config_logger`        | `vehicle_cmd_gate`              | Runtime log level control    |
+| `/control/vehicle_cmd_gate/set_stop`             | `vehicle_cmd_gate`              | Force stop from external     |
+| `/diagnostics_graph/reset`                       | `diagnostic_graph_aggregator`   | Reset diagnostic graph       |
+| `/system/aggregator/set_initializing`            | `diagnostic_graph_aggregator`   | Set initializing state       |
+| `/system/mrm/comfortable_stop/operate`           | `mrm_comfortable_stop_operator` | Trigger comfortable stop     |
+| `/system/mrm/emergency_stop/operate`             | `mrm_emergency_stop_operator`   | Trigger emergency stop       |
+| `/system/mrm/pull_over_manager/operate`          | `mrm_handler`                   | Trigger pull-over MRM        |
+| `/system/operation_mode/change_autoware_control` | ADAPI `operation_mode` adaptor  | Legacy control mode toggle   |
 
 ### Assessment
 
