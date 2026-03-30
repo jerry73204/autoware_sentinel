@@ -9,9 +9,10 @@
   scouting: {
     multicast: { enabled: false },
   },
-  // Increase query timeout to 30s (default 10s) to prevent
-  // "Route reply: Query not found!" when services are slow under load.
-  queries_default_timeout: 30000,
+  // Increase query timeout to 60s (default 10s). The first service call from
+  // a new zenoh client can take 30-40s while zenoh-pico queryable routing is
+  // established through the router.
+  queries_default_timeout: 60000,
   transport: {
     unicast: {
       // Increase accept capacity for Autoware's many concurrent sessions.
