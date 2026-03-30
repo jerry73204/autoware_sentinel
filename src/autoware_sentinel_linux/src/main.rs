@@ -1414,7 +1414,16 @@ fn run() -> Result<(), NodeError> {
                 .publish(&HazardStatusStamped::default())
                 .ok();
             op_mode_availability_pub
-                .publish(&OperationModeAvailability::default())
+                .publish(&OperationModeAvailability {
+                    stamp: Default::default(),
+                    stop: true,
+                    autonomous: true,
+                    local: true,
+                    remote: true,
+                    emergency_stop: true,
+                    comfortable_stop: true,
+                    pull_over: true,
+                })
                 .ok();
         });
     })?;
