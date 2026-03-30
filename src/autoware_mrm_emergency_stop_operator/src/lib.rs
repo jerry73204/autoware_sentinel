@@ -261,13 +261,12 @@ mod tests {
         // Run until acceleration is clamped to exactly target_acceleration.
         // At jerk=-1.5, dt=1/30: takes ceil(2.5/0.05) = 50 steps.
         // Run 60 to be safe — max() clamp guarantees exact -2.5.
-        let mut cmd = Control::default();
         for _ in 0..60 {
-            cmd = op.update(DT);
+            op.update(DT);
         }
 
         // Acceleration is now clamped to exactly target. Next step's jerk must be 0.
-        cmd = op.update(DT);
+        let cmd = op.update(DT);
         assert_eq!(
             cmd.longitudinal.jerk, 0.0,
             "jerk should be zero at target acceleration"
