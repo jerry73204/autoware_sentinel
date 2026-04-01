@@ -108,9 +108,7 @@ use logging_demo::srv::ConfigLogger;
 use std_srvs::srv::SetBool;
 use tier4_control_msgs::srv::SetStop;
 use tier4_system_msgs::msg::CommandModeAvailability;
-use tier4_system_msgs::srv::{
-    OperateMrm, ResetDiagGraph as ResetDiagGraphTier4,
-};
+use tier4_system_msgs::srv::{OperateMrm, ResetDiagGraph as ResetDiagGraphTier4};
 
 /// MRM handler state: OPERATING (emergency response active).
 const MRM_STATE_OPERATING: u16 = 2;
@@ -906,10 +904,10 @@ fn run() -> Result<(), NodeError> {
     })?;
 
     // /control/vehicle_cmd_gate/config_logger — no-op stub
-    executor.add_service::<ConfigLogger, _>(
-        "/control/vehicle_cmd_gate/config_logger",
-        |_request| logging_demo::srv::ConfigLoggerResponse { success: true },
-    )?;
+    executor
+        .add_service::<ConfigLogger, _>("/control/vehicle_cmd_gate/config_logger", |_request| {
+            logging_demo::srv::ConfigLoggerResponse { success: true }
+        })?;
 
     // /control/vehicle_cmd_gate/set_stop — no-op (sentinel manages stops internally)
     executor.add_service::<SetStop, _>("/control/vehicle_cmd_gate/set_stop", |_request| {
@@ -919,12 +917,11 @@ fn run() -> Result<(), NodeError> {
     })?;
 
     // /diagnostics_graph/reset — no-op
-    executor.add_service::<ResetDiagGraphTier4, _>(
-        "/diagnostics_graph/reset",
-        |_request| tier4_system_msgs::srv::ResetDiagGraphResponse {
+    executor.add_service::<ResetDiagGraphTier4, _>("/diagnostics_graph/reset", |_request| {
+        tier4_system_msgs::srv::ResetDiagGraphResponse {
             status: Default::default(),
-        },
-    )?;
+        }
+    })?;
 
     // /system/aggregator/set_initializing — no-op
     executor.add_service::<SetBool, _>("/system/aggregator/set_initializing", |_request| {
@@ -935,28 +932,25 @@ fn run() -> Result<(), NodeError> {
     })?;
 
     // /system/mrm/comfortable_stop/operate — sentinel manages MRM internally
-    executor.add_service::<OperateMrm, _>(
-        "/system/mrm/comfortable_stop/operate",
-        |_request| tier4_system_msgs::srv::OperateMrmResponse {
+    executor.add_service::<OperateMrm, _>("/system/mrm/comfortable_stop/operate", |_request| {
+        tier4_system_msgs::srv::OperateMrmResponse {
             response: Default::default(),
-        },
-    )?;
+        }
+    })?;
 
     // /system/mrm/emergency_stop/operate
-    executor.add_service::<OperateMrm, _>(
-        "/system/mrm/emergency_stop/operate",
-        |_request| tier4_system_msgs::srv::OperateMrmResponse {
+    executor.add_service::<OperateMrm, _>("/system/mrm/emergency_stop/operate", |_request| {
+        tier4_system_msgs::srv::OperateMrmResponse {
             response: Default::default(),
-        },
-    )?;
+        }
+    })?;
 
     // /system/mrm/pull_over_manager/operate
-    executor.add_service::<OperateMrm, _>(
-        "/system/mrm/pull_over_manager/operate",
-        |_request| tier4_system_msgs::srv::OperateMrmResponse {
+    executor.add_service::<OperateMrm, _>("/system/mrm/pull_over_manager/operate", |_request| {
+        tier4_system_msgs::srv::OperateMrmResponse {
             response: Default::default(),
-        },
-    )?;
+        }
+    })?;
 
     // /system/operation_mode/change_autoware_control — legacy toggle
     executor.add_service::<ChangeAutowareControl, _>(
