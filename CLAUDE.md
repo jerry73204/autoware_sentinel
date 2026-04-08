@@ -9,19 +9,19 @@ when the main compute fails.
 
 ## Project Structure
 
-Each algorithm crate is a standalone package (no root workspace). Message crates are
-generated per-package into a local `generated/` directory.
+All algorithm crates are organized in a Cargo workspace (`Cargo.toml` at root). Message
+crates are generated in `src/autoware_sentinel_linux/generated/` and shared via root
+`[patch.crates-io]`. nano-ros is referenced as a git dependency (pinned rev).
+`src/autoware_sentinel/` (Zephyr), `src/verification/` (Verus), and `tests/` are
+excluded from the workspace.
 
 ```
 autoware-nano-ros/
 ├── src/
 │   ├── autoware_stop_filter/        # Phase 1 — velocity stop filter
 │   │   ├── Cargo.toml
-│   │   ├── .cargo/config.toml       # [patch.crates-io] — auto-generated
 │   │   ├── package.xml              # ROS message dependencies
-│   │   ├── justfile                 # generate, build, test, clean
 │   │   ├── .gitignore
-│   │   ├── generated/               # per-package generated message crates
 │   │   └── src/lib.rs
 │   ├── autoware_vehicle_velocity_converter/  # Phase 1 — VelocityReport→Twist
 │   ├── autoware_shift_decider/      # Phase 1 — gear state machine
@@ -64,8 +64,11 @@ autoware-nano-ros/
 │   ├── activate_autoware.sh         # Source Autoware ROS 2 environment
 │   └── zephyr/
 │       └── setup.sh                 # Zephyr workspace initialization
+├── Cargo.toml                       # Workspace root (members + [patch.crates-io])
+├── Cargo.lock                       # Shared lockfile for all workspace members
 ├── west.yml                         # Zephyr west manifest
 ├── .env                             # Build-time env vars (loaded by justfile)
+├── .envrc                           # direnv: sources ROS 2 + rmw_zenoh_cpp env
 ├── justfile                         # Root convenience recipes
 ├── autoware-repo -> ~/repos/autoware/1.5.0-ws  # Autoware source (symlink)
 └── CLAUDE.md                        # This file
@@ -73,35 +76,43 @@ autoware-nano-ros/
 
 ## Build Commands
 
-Per-package builds — run from each crate directory:
+Workspace builds from root:
 
 ```bash
-cd src/autoware_stop_filter
-just generate        # generate message crates + .cargo/config.toml
-just build           # cargo build
-just test            # cargo test
+cargo build --workspace        # build all algorithm crates + sentinel
+cargo test --workspace         # run all unit tests
+cargo check --workspace --exclude autoware_sentinel_linux --target thumbv7em-none-eabihf  # cross-check
 ```
 
 Root justfile for convenience:
 
 ```bash
-just build              # build all packages + Zephyr + Linux sentinel (with --tests)
-just build-zephyr       # build Zephyr application only (native_sim)
-just build-sentinel-linux # build Linux sentinel binary
-just test               # test all packages (unit tests)
-just test-integration   # run integration tests with nextest
-just test-transport     # run transport smoke tests only
-just test-planning      # run planning simulator tests only
-just dump-autoware           # dump planning simulator launch to record.json
-just launch-autoware-baseline # launch unmodified Autoware via play_launch
-just launch-autoware-sentinel # launch filtered Autoware + zenohd + sentinel
-just cross-check        # cargo check --target thumbv7em-none-eabihf in each
-just generate-bindings  # regenerate messages in all packages
-just format             # cargo fmt on all packages
-just ci                 # format-check + cross-check + test
-just verify-kani        # run Kani verification on all harness crates
-just verify-verus       # run Verus verification
-just verify             # run all verification (Kani + Verus)
+# Build
+just build                # build all packages + Zephyr + Linux sentinel
+just build-sentinel-linux # build Linux sentinel binary only
+just build-zephyr         # build Zephyr application (native_sim)
+just generate-bindings    # regenerate message crates (sentinel_linux is the superset)
+
+# Run (each in a separate terminal)
+just run-zenohd           # zenohd router on localhost:7447
+just run-autoware         # full baseline Autoware via play_launch
+just run-autoware-filtered # filtered Autoware (sentinel replaces 14 nodes)
+just run-sentinel         # Linux sentinel binary (unsets CONFIG_URI env vars)
+just run-auto-drive       # autonomous drive controller (init pose → route → engage → drive)
+just ros2-daemon-restart  # restart ros2 daemon with rmw_zenoh_cpp
+
+# All-in-one (bundles zenohd + play_launch + sentinel + optional auto_drive)
+just launch-autoware-sentinel --drive --timeout 300
+
+# Test
+just test                 # cargo test --workspace
+just test-transport       # transport smoke tests (nextest)
+just cross-check          # cross-compile check (excludes sentinel_linux)
+just ci                   # format-check + cross-check + test
+
+# Verification
+just verify-kani          # Kani harnesses
+just verify-verus         # Verus proofs
 ```
 
 All algorithm crates must be `#![no_std]` and cross-compile to `thumbv7em-none-eabihf`.
@@ -217,8 +228,8 @@ default = []
 std = ["nav_msgs/std", "geometry_msgs/std"]
 ```
 
-Message deps use `version = "*"` — resolved via `[patch.crates-io]` in the auto-generated
-`.cargo/config.toml` to point at local `generated/` crates.
+Message deps use `version = "*"` — resolved via `[patch.crates-io]` in the root
+workspace `Cargo.toml` pointing at `src/autoware_sentinel_linux/generated/` crates.
 
 ### nros node wiring pattern
 
@@ -284,6 +295,38 @@ application code. Always use the `Executor`/`Node` layer.
   `thumbv7em-none-eabihf`. Workaround: add `[profile.dev.package.autoware_adapi_v1_msgs]
   opt-level = 1` in any crate that depends on it. See [LLVM #64277](https://github.com/llvm/llvm-project/issues/64277).
 
+## Zenoh-pico Drive Latency
+
+Full investigation: `docs/research/zenoh-pico-drive-latency.md`
+
+The sentinel drives 1.8× slower than baseline Autoware (46s vs 26s). Two fixes applied:
+
+1. **Removed redundant sleep from `spin_blocking`** (nano-ros) — the executor slept 10ms
+   unconditionally after each `spin_once`, causing subscription data loss. Fix: removed
+   the sleep (spin_once already provides wait semantics). Impact: 79-134s → 47-50s.
+
+2. **Increased staleness threshold to 2000ms** — at 500ms, brief zenoh-pico subscription
+   dropouts triggered the staleness guard, causing the Autoware controller to over-correct
+   with hard braking. At 2000ms, brief dropouts pass through unmodified. Impact: eliminated
+   20s mid-route stop.
+
+**Remaining 1.8× gap**: zenohd fails to propagate zenoh-pico subscription interests to
+rmw_zenoh_cpp publishers under load (222 sessions). With 1 publisher, data arrives instantly;
+with full Autoware (222 sessions), external data may never arrive. This is a zenohd
+scalability issue, not a zenoh-pico bug. The sentinel's successful runs are non-deterministic,
+depending on session connection timing.
+
+**Upstream fix**: zenoh [PR #2096 "Regions"](https://github.com/eclipse-zenoh/zenoh/pull/2096)
+merged to `main` on 2026-04-01. It rewrites the interest routing system to fix scalability
+with many sessions. Fixes issues [#2224](https://github.com/eclipse-zenoh/zenoh/issues/2224),
+[#2233](https://github.com/eclipse-zenoh/zenoh/issues/2233),
+[#2278](https://github.com/eclipse-zenoh/zenoh/issues/2278),
+[#2283](https://github.com/eclipse-zenoh/zenoh/issues/2283).
+**Not in zenoh 1.8.0** — will be in a future release (breaking change).
+
+**Wireshark dissector** installed at `~/.local/lib/wireshark/plugins/4.6/epan/libzenoh_dissector.so`
+for zenoh 1.7.2 protocol analysis. Requires `wireshark` group membership for capture.
+
 ## Autoware Source Reference
 
 Autoware 1.5.0 workspace is symlinked at `autoware-repo` (points to
@@ -339,7 +382,7 @@ linear.x.abs() < self.vx_threshold
 | 6 | Zephyr Application (single binary) | In progress |
 | 7 | Integration Testing (Autoware planning simulator) | In progress (7.1–7.3 complete) |
 | 8 | Topic Parity (match baseline Autoware topics) | Complete |
-| 12 | Service & Topic Parity (services + parameter API) | In progress — see below |
+| 12 | Service & Topic Parity (services + parameter API) | Complete — see below |
 
 See `docs/roadmap/` for detailed phase docs. Roadmap docs use `- [ ]` / `- [x]` checkboxes
 on subphase headers and acceptance criteria to track completion progress.
@@ -456,10 +499,10 @@ Full roadmap: `docs/roadmap/phase-12-service-topic-parity.md`
 All acceptance criteria verified:
 - `ros2 service list` shows all 11 Phase 12 functional services + 6 parameter services
 - `just cross-check` passes — all algorithm crates cross-compile to `thumbv7em-none-eabihf`
-- Live comparison (baseline 571 topics / 742 services vs sentinel 558 / 653):
-  - 14 missing topics — system monitoring (diagnostics, component_state_monitor, hazard_status)
-  - 95 missing services — 84 per-node parameter services + 11 system monitoring services
-  - All missing items are from filtered-out diagnostic/monitoring nodes, not the driving pipeline
+- Live comparison (baseline 571 topics / 742 services vs sentinel 572 / 664):
+  - 0 missing topics (full parity, +1 extra: `/control/is_autonomous_available`)
+  - 84 missing services — all per-node parameter services (by design: sentinel is one node)
+  - 0 missing functional services
   - Full analysis in `docs/roadmap/phase-12-service-topic-parity.md`
 
 **Important:** The sentinel must NOT inherit `ZENOH_SESSION_CONFIG_URI` or `ZENOH_ROUTER_CONFIG_URI`
