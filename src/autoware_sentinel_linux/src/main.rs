@@ -125,7 +125,7 @@ const DT: f32 = 1.0 / 30.0;
 /// External control staleness threshold (ms). If Autoware's controller hasn't
 /// sent an update within this window, zero the acceleration to safely stop.
 /// Prevents runaway during zenoh-pico subscription dropouts.
-const EXTERNAL_CONTROL_STALE_MS: u64 = 500;
+const EXTERNAL_CONTROL_STALE_MS: u64 = 2000;
 
 /// OperationModeState mode constants.
 const OP_MODE_STOP: u8 = 1;
@@ -200,6 +200,7 @@ struct SafetyIsland {
     has_trajectory: bool,
     has_odometry: bool,
     has_steering: bool,
+    controller_started: bool,
     /// True when Autoware's controller_node_exe is providing control commands
     has_external_control: bool,
     /// Timestamp (ms) when the last external control message was received.
@@ -281,6 +282,7 @@ impl SafetyIsland {
             has_trajectory: false,
             has_odometry: false,
             has_steering: false,
+            controller_started: false,
             has_external_control: false,
             last_external_control_ms: 0,
             autonomous_engaged: false,
@@ -292,6 +294,12 @@ impl SafetyIsland {
     ///
     /// VelocityReport → VehicleVelocityConverter → StopFilter → Twist2Accel
     fn on_velocity_report(&mut self, msg: &VelocityReport) {
+        if self.prev_stamp.is_none() {
+            log::info!(
+                "FIRST velocity_report received: {:.2} m/s",
+                msg.longitudinal_velocity
+            );
+        }
         let twist_cov = self.velocity_converter.convert(msg);
         let twist = &twist_cov.twist.twist;
         let filtered = self.stop_filter.apply(&twist.linear, &twist.angular);
@@ -321,6 +329,9 @@ impl SafetyIsland {
 
     /// Store a trajectory message for the controller node.
     fn on_trajectory(&mut self, msg: &Trajectory) {
+        if !self.has_trajectory {
+            log::info!("FIRST trajectory received ({} points)", msg.points.len());
+        }
         let n = msg
             .points
             .len()
@@ -351,6 +362,9 @@ impl SafetyIsland {
 
     /// Store odometry for the controller node.
     fn on_odometry(&mut self, msg: &Odometry) {
+        if !self.has_odometry {
+            log::info!("FIRST odometry received");
+        }
         let pos = &msg.pose.pose.position;
         let q = &msg.pose.pose.orientation;
         let (pitch, yaw) = quaternion_to_pitch_yaw(q.x, q.y, q.z, q.w);
@@ -366,6 +380,12 @@ impl SafetyIsland {
 
     /// Store steering angle for the controller node.
     fn on_steering(&mut self, msg: &SteeringReport) {
+        if !self.has_steering {
+            log::info!(
+                "FIRST steering received: {:.4} rad",
+                msg.steering_tire_angle
+            );
+        }
         self.input_data.current_steer = msg.steering_tire_angle as f64;
         self.has_steering = true;
     }
@@ -379,6 +399,15 @@ impl SafetyIsland {
     fn run_controller(&mut self, current_time_s: f64) {
         if !self.has_trajectory || !self.has_odometry || !self.has_steering {
             return; // Not enough data yet — use external control_cmd
+        }
+        if !self.controller_started {
+            log::info!(
+                "CONTROLLER START: traj={} odom={} steer={} — internal controller active",
+                self.has_trajectory,
+                self.has_odometry,
+                self.has_steering,
+            );
+            self.controller_started = true;
         }
 
         // Operation mode: always autonomous in sentinel
@@ -994,17 +1023,15 @@ fn run() -> Result<(), NodeError> {
             // ── Staleness guard ────────────────────────────────────────
             // When using external control, check if the data is stale.
             // During zenoh-pico subscription dropouts, auto_control retains
-            // the last value (possibly with positive acceleration). Replace
-            // with gentle braking at current speed to avoid:
-            //  1. Overshooting (sustained positive acceleration)
-            //  2. Control validator over-velocity trigger (target_vel=0
-            //     while vehicle still moving → MRM cascade)
+            // the last received command. Brief dropouts (< 2s) are tolerated
+            // by passing the last command through — this preserves the
+            // controller's natural trajectory and avoids control
+            // discontinuities. Only for prolonged staleness (≥ 2s), apply
+            // gentle braking at current velocity.
             let auto_control_timestamp_ms = if island.has_external_control {
                 let age_ms = now.saturating_sub(island.last_external_control_ms);
                 if age_ms > EXTERNAL_CONTROL_STALE_MS {
                     // Stale: gentle braking at current speed.
-                    // Use current_velocity as target so the validator doesn't
-                    // flag over-velocity (target ≈ actual → no mismatch).
                     island.auto_control.longitudinal.velocity = island.current_velocity as f32;
                     island.auto_control.longitudinal.acceleration = -1.5;
                 }
@@ -1101,6 +1128,21 @@ fn run() -> Result<(), NodeError> {
             });
 
             let gate_output = island.cmd_gate.update(now);
+
+            // Debug: log gate output every ~1s (every 30th tick)
+            static TICK: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+            let tick = TICK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if tick % 30 == 0 {
+                log::info!(
+                    "GATE: vel={:.2} accel={:.2} steer={:.4} ext={} traj={} ctrl_started={}",
+                    gate_output.control.longitudinal.velocity,
+                    gate_output.control.longitudinal.acceleration,
+                    gate_output.control.lateral.steering_tire_angle,
+                    island.has_external_control,
+                    island.has_trajectory,
+                    island.controller_started,
+                );
+            }
 
             // ── Validation ─────────────────────────────────────────────
 
