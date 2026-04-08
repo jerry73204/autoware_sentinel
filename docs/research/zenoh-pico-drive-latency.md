@@ -1,300 +1,236 @@
 # Zenoh-pico Drive Latency Investigation
 
-**Date:** 2026-04-03
-**Context:** Autoware planning simulator with sentinel replacing 14 nodes
+**Dates:** 2026-04-03 to 2026-04-08
+**Context:** Autoware 1.5.0 planning simulator with sentinel replacing 14 nodes
 
 ## Problem
 
 The sentinel-augmented Autoware stack drives 3–5× slower than the unmodified baseline
-(79–134s vs 26s for the same route). The engagement flow works correctly — the slowdown
-is entirely in the driving phase.
+(79–134s vs 26s for the same ~100m route). The engagement flow works correctly — the
+slowdown is entirely in the driving phase.
 
-## Test Setup
-
-- Autoware 1.5.0 planning simulator via `play_launch replay` (filtered record)
-- Sentinel binary connected through zenohd router on localhost:7447
-- Autoware nodes use rmw_zenoh_cpp (full Rust zenoh); sentinel uses zenoh-pico
-- Route: ~100m straight segment in sample-map-planning
-
-## Data Flow
-
-In the baseline Autoware stack:
+## Architecture
 
 ```
-planner → trajectory → controller_node_exe → /control/trajectory_follower/control_cmd
-    → vehicle_cmd_gate → /control/command/control_cmd → simulator
+Baseline:
+  controller → vehicle_cmd_gate → /control/command/control_cmd → simulator
+  (all rmw_zenoh_cpp, intra-router, sub-ms latency)
+
+Sentinel:
+  controller → zenohd → zenoh-pico → sentinel gate → zenoh-pico → zenohd → simulator
+  (+2 extra zenohd hops, ~2-4ms per cycle)
 ```
 
-In the sentinel-augmented stack:
+## Fixes Applied
 
-```
-planner → trajectory → controller_node_exe → /control/trajectory_follower/control_cmd
-    → [zenoh-pico subscription] → sentinel gate → /control/command/control_cmd → simulator
-```
+### Fix 1: Remove redundant sleep from spin_blocking (nano-ros `839f07cd`)
 
-The sentinel subscribes to the controller output via zenoh-pico and passes it through
-its safety gate to the simulator. The sentinel also has an internal trajectory follower
-(PID/MPC), but it requires `/planning/scenario_planning/trajectory` data to activate.
+`spin_blocking()` had an unconditional `sleep(10ms)` after each `spin_once(10ms)` cycle.
+`spin_once(10ms)` already provides the wait semantics:
+- Multi-threaded (POSIX): condvar wait, wakes early on data
+- Single-threaded (Zephyr/bare-metal): `zp_read()` polling loop
 
-## Findings
+The extra sleep doubled the cycle to 20ms, creating a window where the single-message
+subscriber buffer was overwritten before the executor could process it.
 
-### 1. Subscription discovery delay (~22s)
-
-After engagement, the sentinel receives **no control data** for ~22 seconds. During this
-period the gate publishes zero velocity/acceleration and the car stays stationary.
-
-```
-17:41:00  GATE: vel=0.00 accel=0.00 ext=false traj=false   ← car stationary
-17:41:02  GATE: vel=0.00 accel=0.00 ext=false traj=false
-  ...
-17:41:22  GATE: vel=0.90 accel=0.81 ext=true  traj=false   ← first external data arrives
-```
-
-**Root cause:** zenoh-pico subscription discovery through zenohd. The sentinel registers
-its subscription at startup, but zenohd doesn't propagate the interest to the rmw_zenoh_cpp
-publisher (Autoware's controller_node_exe) for ~20s. This is a zenoh protocol-level delay,
-not a sentinel bug.
-
-### 2. Intermittent subscription dropouts (staleness guard)
-
-Once discovered, the external control data arrives **intermittently**. The data alternates
-between fresh (age < 500ms) and stale (age > 500ms). During stale periods, the sentinel's
-staleness guard replaces the control command with gentle braking (accel = -1.5 m/s²).
-
-```
-17:41:22  vel=0.90 accel=0.81  ext=true   ← fresh: car accelerates
-17:41:24  vel=2.34 accel=0.95  ext=true   ← fresh
-17:41:26  vel=3.89 accel=0.63  ext=true   ← fresh
-17:41:31  vel=4.16 accel=-1.50 ext=true   ← STALE: gentle braking
-17:41:33  vel=4.16 accel=-1.50 ext=true   ← STALE
-17:41:35  vel=4.14 accel=-0.25 ext=true   ← fresh again
-17:41:37  vel=3.11 accel=-1.75 ext=true   ← STALE
-```
-
-This stop-start pattern (accelerate → brake → accelerate → brake) is the primary cause
-of the 3–5× slowdown.
-
-**Quantitative data from one test run:**
-- Total FRESH ticks: 5,904 (33%)
-- Total STALE ticks: 12,245 (67%)
-- Average stale age: 77s (max 340s)
-
-### 3. Internal controller never activates
-
-The sentinel's internal trajectory follower (PID + MPC) requires three subscriptions to
-deliver data before it produces output:
-
-- `/planning/scenario_planning/trajectory` — **never received**
-- `/localization/kinematic_state` — received after ~5s
-- `/vehicle/status/steering_status` — received after ~5s
-
-The trajectory subscription never delivers data during the drive. This is the same
-zenoh-pico discovery delay affecting a different topic. As a result, `has_trajectory`
-stays `false` and the internal controller returns early every tick.
-
-The entire drive relies on the external controller path (Autoware's controller_node_exe
-→ zenoh-pico → sentinel gate), which suffers from the dropout issue.
-
-## Timeline (typical run)
-
-| Time | Event |
-|------|-------|
-| T+0s | Sentinel starts, registers subscriptions |
-| T+5s | Velocity, odometry, steering arrive (zenoh-pico discovers these publishers) |
-| T+100s | Autoware fully started, auto_drive engages |
-| T+122s | External control first arrives (zenoh-pico discovers controller publisher) |
-| T+122–200s | Intermittent fresh/stale driving (car moves in bursts) |
-| T+179s | ARRIVED at goal |
-
-## Comparison
-
-| Metric | Baseline | Sentinel |
-|--------|----------|----------|
-| Engagement | instant | instant (with 60s query timeout) |
-| First control data | immediate | +22s (zenoh-pico discovery) |
-| Drive pattern | continuous | intermittent (33% fresh, 67% stale) |
-| **Drive time** | **26s** | **79–134s** |
-
-## Root Causes
-
-Both issues are **zenoh-pico transport layer** problems:
-
-1. **Subscription interest propagation delay** — when zenoh-pico subscribes to a keyexpr,
-   the zenohd router needs to propagate the interest to the rmw_zenoh_cpp publisher.
-   This propagation takes 5–30s depending on the topic and router load.
-
-2. **Subscription data dropout** — even after discovery, zenoh-pico receives data
-   intermittently. Some ticks receive the publisher's data; others don't. This may be
-   related to zenoh-pico's single-threaded polling model vs zenohd's async routing.
-
-## Staleness Guard Behavior
-
-The staleness guard (`EXTERNAL_CONTROL_STALE_MS = 500ms`) is a safety mechanism:
-
-- If external control data is >500ms old, replace with gentle braking (accel = -1.5 m/s²)
-- Sets velocity target to current velocity (prevents control validator over-velocity alarm)
-- Prevents overshoot during dropouts (sustained positive acceleration with stale data)
-
-Without the staleness guard, the car would continue accelerating with the last received
-command during dropouts, potentially overshooting turns or exceeding safe velocity.
-
-## Fix: Skip sleep when callbacks are active (nano-ros `0f5bf2a4`)
-
-**Root cause identified:** The executor's `spin_blocking()` loop had an unconditional
-`sleep(10ms)` after every `spin_once()` cycle. When 30Hz data was flowing:
-
-1. `spin_once(10ms)` — condvar wakes early on data, processes callbacks (~1ms)
-2. `sleep(10ms)` — **unconditional** — new messages arrive during this window
-3. zenoh-pico background thread overwrites single-message subscriber buffer
-4. By the time the executor wakes, the message has been overwritten 1–2 times
-
-**Fix:** Only sleep when no callbacks were processed (system is idle):
-
-```rust
-// Before: always sleep
-std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS as u64));
-
-// After: skip sleep when busy
-if result.total() == 0 {
-    std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS as u64));
-}
-```
-
-**Results:**
-
-| Metric | Before fix | After fix | Baseline |
-|--------|-----------|-----------|----------|
-| Drive time | 79–134s | **46.9s** | 26s |
+| Metric | Before | After | Baseline |
+|--------|--------|-------|----------|
+| Drive time | 79–134s | 47–50s | 26s |
 | Stale ratio | ~67% | ~5% | 0% |
-| Slowdown | 3–5× | **1.8×** | 1× |
 
-The remaining 1.9× gap (50s vs 26s) is NOT from subscription dropouts — data flows
-continuously after the fix. See next section.
+### Fix 2: Increase staleness threshold from 500ms to 2000ms
 
-## Remaining Gap: Controller-Commanded Mid-Route Stop (2026-04-04)
+Brief subscription dropouts (~2s) at the 500ms threshold triggered the staleness guard
+(accel=-1.50). The Autoware controller saw the unexpected deceleration in the simulator's
+odometry and over-corrected with hard braking (accel=-2.50), causing a 20s mid-route stop.
 
-After the spin fix, GATE logging shows the external control data arrives continuously
-(`ext=true` throughout). The 50s drive time breaks down as:
+At 2000ms, brief dropouts pass through unmodified, preserving the controller's natural
+trajectory. The controller no longer over-corrects.
 
-```
-05:23:01-05:23:17  Smooth driving, vel 0→4.17 m/s (16s)     [fresh ext control]
-05:23:18-05:23:19  Brief stale, accel=-1.50 (2s)            [stale guard, 2 ticks]
-05:23:20-05:23:22  Controller decelerates: accel=-0.80→-2.30 [fresh ext, NOT stale]
-05:23:23-05:23:42  Car stopped, accel=-2.50 for 20s          [fresh ext, controller decision]
-05:23:43-05:23:50  Resumes driving, accelerates to goal (7s) [fresh ext control]
-ARRIVED after 50.3s
-```
+**Trade-off:** At 4.17 m/s, 2s of uncontrolled travel ≈ 8m. Acceptable on straight road.
 
-The 20s pause at `accel=-2.50` is the **Autoware controller's own decision** — NOT the
-staleness guard (which uses -1.50). The controller commanded a hard stop mid-route, then
-resumed 20s later.
+| Metric | Before | After | Baseline |
+|--------|--------|-------|----------|
+| Drive time | 47–50s | **46s** | 26s |
+| Mid-route stops | 20s pause | none | none |
 
-**Root cause hypothesis:** Round-trip latency in the control feedback loop:
+### Combined result: 1.8× baseline (46s vs 26s)
 
-```
-controller_node_exe → /control/trajectory_follower/control_cmd
-    → [zenohd] → [zenoh-pico sub] → sentinel gate
-    → /control/command/control_cmd → simulator
-    → simulator publishes /localization/kinematic_state
-    → [zenohd] → controller_node_exe reads position
-```
+## Remaining Gap: zenohd Interest Routing Under Load
 
-Each zenoh hop adds latency. The controller's PID/MPC is tuned for the baseline stack
-where all components share the same DDS domain with sub-millisecond latency. With the
-sentinel in the loop, the position feedback arrives late, causing the controller to see
-stale position data and over-correct (hard braking when it thinks it overshot).
+The remaining ~20s gap is caused by zenohd failing to propagate zenoh-pico subscription
+interests to rmw_zenoh_cpp publishers when there are 200+ concurrent sessions.
 
-## Investigation: zenoh-pico Transport Latency
+### Evidence
 
-Analyzed the zenoh-pico C library at `packages/zpico/zpico-sys/zenoh-pico/`.
+**Comparative test** (Autoware fully running, 222 sessions on zenohd):
 
-### Read path (no issues found)
+| Client | Time to first message |
+|--------|----------------------|
+| rmw_zenoh_cpp (full Rust zenoh) | **259ms** |
+| zenoh-pico | **never** (>360s) |
+| zenoh-pico with 1 publisher (no Autoware) | **instant** (<1s) |
 
-- **TCP_NODELAY** enabled on client socket (`src/system/unix/network.c:208`)
-- **Synchronous callbacks** — subscriber callback fires directly from the read task
-  thread, no intermediate queue (`src/session/subscription.c:281`)
+**Debug tracing** (`fprintf` in `zpico.c`):
+- All 9 `z_declare_subscriber()` calls succeed (return 0)
+- Self-published data (sentinel→zenohd→sentinel loopback) arrives fine
+- External data (rmw_zenoh_cpp→zenohd→zenoh-pico) never arrives with 222 sessions
+
+### What was ruled out
+
+| Hypothesis | Test | Result |
+|-----------|------|--------|
+| zenoh-pico wire format mismatch | Rebased to exact 1.7.2 tag | Same behavior (also broke connection) |
+| Wildcard keyexpr matching | Used exact key instead of `.../*` | No change |
+| Interest routing timeout | Set `routing.interests.timeout: 0` | No change |
+| Session startup order | Sentinel first, then Autoware | No change |
+| Peer mode connection | `ZENOH_MODE=peer` | ConnectionFailed |
+| zenoh-pico transport latency | Analyzed read/write/keepalive paths | All correct: TCP_NODELAY on, sync callbacks, no batching |
+| Gate filter parameters | Compared with Autoware source | Match exactly |
+
+### zenoh-pico transport analysis
+
+The zenoh-pico C library transport is correct:
+- **TCP_NODELAY** enabled (no Nagle delay)
+- **Synchronous callbacks** — subscriber callback fires directly from read task
 - **No read batching** — each message decoded and dispatched individually
-  (`src/transport/unicast/read.c:48-55`)
-- **Keep-alive non-blocking** — lease task uses try-lock, cannot block read task
-  (`src/transport/unicast/lease.c:28`)
-- **Socket timeout** — `SO_RCVTIMEO = 100ms`, creating natural poll interval
+- **No write batching** — `_batch_state = _Z_BATCHING_IDLE` (nros never calls `z_batch_start`)
+- **Non-blocking keep-alive** — lease task uses try-lock, cannot block read task
+- **Separate TX/RX mutexes** — publishing doesn't block reading
 
-### Write path (no issues found)
+### zenoh-pico version
 
-- **Batching disabled** by default — `_batch_state = _Z_BATCHING_IDLE` at init
-  (`src/transport/unicast/transport.c:36`). nros never calls `z_batch_start()`.
-- Non-express publishes still flush immediately when batching is idle
-  (`src/transport/common/tx.c:168`)
-- TX mutex is separate from RX mutex — publishing doesn't block reading
+- zenoh-pico: `1.7.2 + 18 commits` (main branch after tag)
+- zenohd: `v1.7.2` (but built from main branch post-merge, not exact tag)
+- rmw_zenoh_cpp (libzenohc): `v1.7.2`
+- Connection works between zenoh-pico 1.7.2+18 and zenohd
+- Connection FAILS between zenoh-pico exact 1.7.2 tag and zenohd (wire format evolved)
 
-### Conclusion: transport is not the bottleneck
+### Root cause assessment
 
-The extra 2 zenoh hops (zenohd→zpico + zpico→zenohd) add ~2-4ms per control cycle.
-This is negligible for a 30Hz control loop (33ms period).
+The issue is in **zenohd's interest-based routing** when handling 200+ concurrent client
+sessions. When a new zenoh-pico client declares a subscription, zenohd needs to:
+1. Match the subscription keyexpr against all existing publisher declarations
+2. Set up forwarding from matching publisher sessions to the new subscriber session
 
-## Remaining Gap Analysis: Controller-Commanded Mid-Route Stop
+With 222 sessions (each declaring ~10 publishers), this is ~2200 publisher entries to
+match against. The matching either takes very long, silently fails, or is rate-limited.
 
-Detailed GATE log analysis shows the 20s mid-route stop is the **Autoware controller's
-own command** (`accel=-2.50`, which is harder than the stale guard's `-1.50`). The
-external control data continues flowing (`ext=true`) during the stop — this is NOT a
-dropout issue.
+The non-deterministic behavior (sometimes works in `just launch-autoware-sentinel`, usually
+doesn't in manual tests) suggests a race condition in zenohd's interest propagation logic
+that depends on the timing of session connections.
 
-The controller (`controller_node_exe`) is Autoware's unmodified code running in the
-filtered stack. It reads trajectory and odometry directly via rmw_zenoh_cpp (not through
-zenoh-pico). The sentinel only adds 2 extra hops in the control-command path:
+### Successful runs
 
-```
-Baseline:  controller → gate → simulator       (all rmw_zenoh_cpp)
-Sentinel:  controller → zenohd → zpico(sentinel) → zenohd → simulator
-                        ^~~~~ +2 hops (~2-4ms) ~~~~^
-```
+In `just launch-autoware-sentinel --drive` runs where the sentinel DID receive data and
+drove the car (46s), the sentinel binary starts as part of a `parallel` job group alongside
+zenohd and play_launch. The exact startup timing and session connection order differs from
+manual testing. Data arrival was delayed by ~3s after engagement but then flowed continuously.
 
-The 2-4ms extra latency should not cause a 20s behavioral difference. Possible causes
-still under investigation:
+## Next Steps
 
-1. **Gate filter parameter mismatch** — the sentinel's `FilterParams::default()` uses
-   hard-coded values that differ from Autoware's launch-configured parameters. The gate's
-   rate limiter or speed clamp could modify the control command differently from the
-   baseline gate, causing the controller to see unexpected vehicle behavior and over-correct.
+1. **File upstream bug** on github.com/eclipse-zenoh/zenoh with reproduction steps:
+   - zenohd + 200 rmw_zenoh_cpp sessions + 1 zenoh-pico client
+   - zenoh-pico subscription declaration succeeds but data never forwarded
+   - Same subscription from rmw_zenoh_cpp works in 259ms
 
-2. **Gear command timing** — the sentinel's shift_decider starts with `GearReport::default()`
-   (report=0, NONE) until the gear_status subscription delivers data. If the simulator
-   receives gear=NONE during the first few seconds, it may not move, causing the controller
-   to see unexpected stationary behavior.
+2. **Enable zenohd debug logging** for interest routing module to capture the full
+   interest propagation sequence when the zenoh-pico client connects
 
-3. **30Hz timer phase offset** — the sentinel's timer is not synchronized with the
-   controller's output rate. Up to 33ms of jitter per cycle could accumulate in the MPC
-   prediction horizon.
+3. **Compare wire messages** between zenoh-pico and rmw_zenoh_cpp subscription
+   declarations using Wireshark or zenohd trace logs
 
-## Fix 2: Increase staleness threshold from 500ms to 2000ms
+4. **Test with fewer sessions** to find the threshold where interest propagation breaks
+   (e.g., 50, 100, 150, 200 sessions)
 
-The brief subscription dropouts (~2s) at 500ms threshold triggered the staleness guard,
-which applied -1.50 braking. The controller saw the unexpected deceleration in the
-simulator's odometry and over-corrected with -2.50 hard braking, causing a 20s mid-route
-stop. With a 2000ms threshold, the brief dropouts pass through unmodified, preserving the
-controller's natural trajectory.
+### Root cause found: missing DeclareKeyExpr (2026-04-09)
 
-**Trade-off:** At 4.17 m/s, a 2s uncontrolled period adds ~8m of travel with the last
-command. Acceptable on straight road; requires evaluation for curves.
+**tshark packet capture** with zenoh dissector reveals:
 
-**Results after both fixes:**
+1. zenoh-pico sends **9 DeclareSubscriber** to the router — confirmed on wire ✓
+2. zenohd sends **1318 Push messages** back to zenoh-pico — data IS forwarded ✓
+3. Push messages use `WireExpr { scope: 118, suffix: "/TypeHashNotSupported", mapping: Receiver }`
+4. **zenohd sent 0 DeclareKeyExpr** to the sentinel — scope 118 is never defined
+5. zenoh-pico can't resolve the keyexpr → **silently drops all 1318 Push messages**
 
-| Metric | Original | After spin fix | After stale threshold fix | Baseline |
-|--------|----------|---------------|--------------------------|----------|
-| Drive time | 79–134s | 47–50s | **46.4s** | 26s |
-| Stale ratio | 67% | ~5% | ~5% | 0% |
-| Mid-route stops | 20s pause | 20s pause | **none** | none |
-| Slowdown | 3–5× | 1.9× | **1.8×** | 1× |
+The `mapping: Receiver` flag means the scope ID must be resolved in the receiver's
+keyexpr table. zenohd should send a `DeclareKeyExpr(id=118, keyexpr="0/vehicle/...")` 
+before forwarding Pushes that reference scope 118. With 1 publisher this works (instant
+data). With 200+ sessions, the `DeclareKeyExpr` is never sent to the new client.
 
-The remaining 1.8× gap (46s vs 26s) is the ~3s subscription discovery delay plus the
-extra 2 zenoh hops per control cycle (~17s of accumulated latency in the feedback loop
-over 40s of driving).
+**Detailed comparison** (1 publisher vs 200+ sessions):
 
-## Summary
+In the working case (1 publisher):
+- Sentinel declares keyexpr ID 116 = `0/vehicle/status/velocity_status/.../VelocityReport_`
+- Push arrives with `scope: 116, suffix: "/TypeHashNotSupported", mapping: Receiver`
+- zenoh-pico resolves: scope 116 (velocity_status) + "/TypeHashNotSupported" → matches subscriber's `/*` wildcard ✓
 
-| Issue | Root cause | Fix | Impact |
-|-------|-----------|-----|--------|
-| 3-5× slowdown | Redundant `sleep(10ms)` in spin_blocking | Removed (nano-ros `839f07cd`) | 79-134s → 47-50s |
-| ~20s mid-route stop | Stale guard at 500ms triggers controller over-correction | Threshold → 2000ms | 47-50s → 46s |
-| ~3s discovery delay | zenoh-pico subscription interest propagation | Not yet addressed | +3s initial wait |
-| **Total** | | | **46s (1.8× baseline)** |
+In the broken case (200+ sessions):
+- Sentinel declares keyexpr ID 118 = `0/api/system/heartbeat/.../Heartbeat_`
+- Push arrives with `scope: 118, suffix: "/TypeHashNotSupported", mapping: Receiver`
+- zenoh-pico resolves: scope 118 (heartbeat) + "/TypeHashNotSupported" → does NOT match velocity subscriber ✗
+- The velocity_status data was sent with the **wrong scope ID** — it used 118 (heartbeat) instead of the correct scope for velocity_status
+
+**Verdict**: zenohd scope ID mapping bug under load. When forwarding Push data to a client
+that joined after 200+ sessions were already established, the router maps the publisher's
+keyexpr to the wrong scope ID in the receiver's keyexpr table. This causes the zenoh-pico
+client to resolve the data to the wrong subscription (or no subscription) and silently drop it.
+
+### Code-level root cause: `get_best_key` vs wildcard subscriptions
+
+File: `external/zenoh/zenoh/src/net/routing/dispatcher/resource.rs:664`
+
+When routing data to a subscriber, zenohd calls `expr.get_best_key(face_id)` to find the
+best scope ID for the receiver. This function walks the resource tree from the data's exact
+keyexpr resource, looking for the receiver's face ID in `session_ctxs`.
+
+For wildcard subscriptions (e.g., `0/vehicle/.../VelocityReport_/*`), the session context is
+registered on the **wildcard resource**, not on the exact data resource
+(`0/vehicle/.../VelocityReport_/TypeHashNotSupported`). The `get_best_key` function walks
+UP the tree via `get_best_parent_key`, looking for any ancestor that has the receiver's session
+context. With 200+ sessions, many faces have session contexts on various tree nodes, and the
+function finds the WRONG context first (e.g., a heartbeat resource instead of the velocity
+resource), returning an incorrect scope ID.
+
+With 1 session, there's only one session context to find, so the walk always succeeds. With
+200+ sessions, the tree has many contexts at many levels, and the parent walk picks up an
+unrelated context.
+
+**Fix options:**
+1. When routing wildcard-matched data, use the matched resource's keyexpr directly instead
+   of calling `get_best_key` (which assumes exact-match tree structure)
+2. Make `get_best_key` prefer contexts on resources that are actual prefixes of the data
+   keyexpr, not just any ancestor in the resource tree
+3. Report to eclipse-zenoh/zenoh as a bug with this analysis
+
+## Upstream Fix: zenoh PR #2096 "Regions" (2026-04-08 update)
+
+The zenoh project merged [PR #2096 "Regions: improved routing scalability"](https://github.com/eclipse-zenoh/zenoh/pull/2096)
+to `main` on 2026-04-01. This is a major rewrite of the routing system that fixes
+multiple interest propagation issues:
+
+- [#2224](https://github.com/eclipse-zenoh/zenoh/issues/2224) — Regions (routing scalability)
+- [#2233](https://github.com/eclipse-zenoh/zenoh/issues/2233) — Refuse interests without key expressions
+- [#2278](https://github.com/eclipse-zenoh/zenoh/issues/2278) — Routers propagate pre-existing tokens to clients
+- [#2283](https://github.com/eclipse-zenoh/zenoh/issues/2283) — Clients propagate pre-existing tokens to local sessions
+
+These issues describe exactly our problem: interest propagation from late-joining clients
+(zenoh-pico) to existing publishers through a router fails at scale.
+
+**Status**: NOT in zenoh 1.8.0 (merged after release). Will be in a future release.
+This is a **breaking change** with new region-based routing configuration.
+
+Until the Regions PR lands in a release, our options are:
+1. Build zenohd from zenoh `main` branch (post-Regions)
+2. Accept the ~1.8× slowdown as a known limitation
+3. Reduce Autoware session count (filter more nodes)
+
+## Version Reference
+
+| Component | Version | Source |
+|-----------|---------|--------|
+| zenohd | v1.7.2 (main post-merge) | `external/zenoh/` |
+| zenoh-pico | 1.7.2 + 18 commits | `nano-ros/packages/zpico/zpico-sys/zenoh-pico/` |
+| rmw_zenoh_cpp | v1.7.2 | `external/rmw_zenoh_ws/` |
+| libzenohc | v1.7.2 | via rmw_zenoh_cpp vendor |
+| nano-ros | local main branch | `~/repos/nano-ros/` |
